@@ -12,4 +12,4 @@ if [ ! -f ".env" ]; then
 fi
 
 source .venv/bin/activate
-python3 chatbot.py "$@"
+python3 src/Chatbot.py "$@"
