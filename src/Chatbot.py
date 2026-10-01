@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from Memories.Database import init_db
 from Memories.Auth import get_or_create_user
 from Memories.Memory import save_message, load_history
+from Memories.Compression import build_context
 
 
 def load_system_prompt(path: str) -> str | None:
@@ -131,20 +132,17 @@ def main():
 
     user_id = login_flow()
 
-    # Build the context: fresh system prompt (never persisted) + stored history
-    messages = []
-
     system_prompt = load_system_prompt(args.system_prompt)
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
         print(f"[System prompt loaded from {args.system_prompt}]")
     else:
+        system_prompt = ""
         print(f"[No system prompt found at {args.system_prompt}, continuing without one]")
 
-    history = load_history(user_id)
-    messages.extend(history)
-    if history:
-        print(f"[Loaded {len(history)} previous message(s) for {user_id}]")
+    history_count = len(load_history(user_id))
+    if history_count:
+        print(f"[{history_count} previous message(s) on file for {user_id} "
+              f"— context will be compressed automatically if needed]")
 
     print(f"\nChatbot ready (model: {args.model}). Type 'exit' to quit.\n")
 
@@ -163,21 +161,21 @@ def main():
             print("Goodbye.")
             break
 
-        messages.append({"role": "user", "content": user_input})
-        save_message(user_id, "user", user_input)
+        # Context built fresh from SQLite every turn (summary + recent
+        # messages, compressed if needed). The current input is appended
+        # only in-memory, and only saved to DB once we have a reply.
+        context = build_context(user_id, system_prompt, args.model, args.ollama_url)
+        context.append({"role": "user", "content": user_input})
 
         print("Assistant: ", end="", flush=True)
-        reply = call_ollama(args.ollama_url, args.model, messages)
+        reply = call_ollama(args.ollama_url, args.model, context)
 
         if reply is None:
-            # Connection or model error: drop the last user message so it
-            # doesn't pollute in-memory context, but it's already persisted
-            # in history as an unanswered turn is NOT saved here (save only
-            # happens below, on success).
-            messages.pop()
+            # Nothing was persisted yet for this turn, so there is nothing
+            # to roll back — just let the user retry.
             continue
 
-        messages.append({"role": "assistant", "content": reply})
+        save_message(user_id, "user", user_input)
         save_message(user_id, "assistant", reply)
 
 
