@@ -28,3 +28,22 @@ def load_history(user_id: str) -> list[dict]:
         return [{"role": row["role"], "content": row["content"]} for row in rows]
     finally:
         conn.close()
+
+
+def load_history_with_ids(user_id: str) -> list[dict]:
+    """Same as load_history, but keeps the message id. Needed by the
+    Context Builder (M2) to know which messages a cached summary already
+    covers, so it never reprocesses the same old messages twice."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, role, content FROM messages WHERE user_id = ? "
+            "ORDER BY id ASC",
+            (user_id,)
+        ).fetchall()
+        return [
+            {"id": row["id"], "role": row["role"], "content": row["content"]}
+            for row in rows
+        ]
+    finally:
+        conn.close()
