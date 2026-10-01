@@ -1,0 +1,46 @@
+name: Sensai CD
+
+on:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Déploiement vers Epitech
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Vérifications
+        shell: bash
+        run: |
+          for f in README.md requirements.txt; do
+            [ -f "$f" ] || { echo "Erreur: $f manquant."; exit 1; }
+          done
+          if grep -iE "langchain|llama[-_]?index|haystack" requirements.txt; then
+            echo "Erreur: framework LLM interdit."
+            exit 1
+          fi
+
+      - name: Configurer SSH
+        env:
+          KEY: ${{ secrets.GIT_MIRROR_SECRET }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Push vers Epitech
+        env:
+          TARGET: ${{ secrets.GIT_MIRROR_REPO }}
+        run: |
+          git remote add epitech "$TARGET"
+          git push epitech "HEAD:refs/heads/${GITHUB_REF_NAME}"
