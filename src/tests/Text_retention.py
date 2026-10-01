@@ -12,17 +12,17 @@ Usage:
 """
 
 import argparse
-import os
 import sys
+import os
 from dotenv import load_dotenv
 
-# Make src/ importable when running this script from the project root
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# src/tests/Text_retention.py -> on remonte d'un niveau pour atteindre src/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.Memories.Database import init_db, get_connection
-from src.Memories.Auth import get_or_create_user
-from src.Memories.Memory import save_message
-from src.Memories.Compression import build_context, get_compression_stats
+from Memories.Database import init_db, get_connection
+from Memories.Auth import get_or_create_user
+from Memories.Memory import save_message
+from Memories.Compression import build_context, get_compression_stats
 
 TEST_USER_ID = "retention_test_user"
 TEST_EMAIL = "retention_test@example.com"
