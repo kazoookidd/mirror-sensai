@@ -36,6 +36,34 @@ def init_db(db_path: str = None) -> None:
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         """)
+        # Current-state cache: at most one active summary per user.
+        # Never a source of truth — always rebuildable from `messages`.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS summaries (
+                user_id TEXT PRIMARY KEY,
+                summary_text TEXT NOT NULL,
+                covers_up_to_msg_id INTEGER NOT NULL,
+                token_count INTEGER NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        """)
+        # Append-only metrics log: one row per compression event.
+        # Kept separate from `summaries` so state and history don't mix.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS compression_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                tokens_before INTEGER NOT NULL,
+                tokens_after INTEGER NOT NULL,
+                compression_ratio REAL NOT NULL,
+                messages_compressed INTEGER NOT NULL,
+                summary_token_count INTEGER NOT NULL,
+                duration_seconds REAL NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
