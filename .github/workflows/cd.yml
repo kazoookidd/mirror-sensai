@@ -43,4 +43,4 @@ jobs:
           TARGET: ${{ secrets.GIT_MIRROR_REPO }}
         run: |
           git remote add epitech "$TARGET"
-          git push "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          git push epitech"HEAD:refs/heads/${GITHUB_REF_NAME}"
