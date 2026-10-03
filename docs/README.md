@@ -1,16 +1,16 @@
-# Sensai — CLI Chatbot (MVP)
+# Sensai: CLI Chatbot (MVP)
 
 A minimal local AI assistant connected to [Ollama](https://ollama.com), built without any LLM
-framework (no LangChain, LlamaIndex, etc.) — all calls go directly through the Ollama HTTP API.
+framework (no LangChain, LlamaIndex, etc.). All calls go directly through the Ollama HTTP API.
 
 ## Features (current MVP)
 
 - Functional CLI chatbot connected to a local Ollama model
-- **Streaming responses** — output is rendered progressively, not as a single block
-- **In-session conversation history** — prior turns are sent as context on every request
-- **Clean error handling** — unavailable model, empty input, connection failure, interrupted stream
-- **Configurable via `.env`** — model, Ollama URL and system prompt path, no code changes needed
-- **CLI overrides** — any `.env` value can be overridden with a command-line flag
+- **Streaming responses**: output is rendered progressively, not as a single block
+- **In-session conversation history**: prior turns are sent as context on every request
+- **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
+- **Configurable via `.env`**: model, Ollama URL and system prompt path, no code changes needed
+- **CLI overrides**: any `.env` value can be overridden with a command-line flag
 
 ## Requirements
 
@@ -47,7 +47,7 @@ Make sure the model is pulled before running:
 ollama pull llama3
 ```
 
-The system prompt is loaded from a plain text file (`system_prompt.txt` by default) — edit that
+The system prompt is loaded from a plain text file (`system_prompt.txt` by default). Edit that
 file to change the assistant's behavior without touching any code.
 
 ## Usage
