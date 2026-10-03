@@ -61,6 +61,8 @@ def call_ollama(base_url: str, model: str, messages: list) -> str | None:
     except requests.exceptions.ChunkedEncodingError:
         print("\nError: connection interrupted while streaming.")
         return None
+    finally:
+        response.close()
 
     print()  # saut de ligne final
     return full_reply
@@ -130,7 +132,11 @@ def main():
     )
     args = parser.parse_args()
 
-    user_id = login_flow()
+    try:
+        user_id = login_flow()
+    except (EOFError, KeyboardInterrupt):
+        print("\nGoodbye.")
+        return
 
     system_prompt = load_system_prompt(args.system_prompt)
     if system_prompt:
@@ -164,11 +170,15 @@ def main():
         # Context built fresh from SQLite every turn (summary + recent
         # messages, compressed if needed). The current input is appended
         # only in-memory, and only saved to DB once we have a reply.
-        context = build_context(user_id, system_prompt, args.model, args.ollama_url)
-        context.append({"role": "user", "content": user_input})
+        try:
+            context = build_context(user_id, system_prompt, args.model, args.ollama_url)
+            context.append({"role": "user", "content": user_input})
 
-        print("Assistant: ", end="", flush=True)
-        reply = call_ollama(args.ollama_url, args.model, context)
+            print("Assistant: ", end="", flush=True)
+            reply = call_ollama(args.ollama_url, args.model, context)
+        except KeyboardInterrupt:
+            print("\n[Interrupted]")
+            continue
 
         if reply is None:
             # Nothing was persisted yet for this turn, so there is nothing
