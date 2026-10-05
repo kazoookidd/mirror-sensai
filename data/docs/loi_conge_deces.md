@@ -28,29 +28,15 @@ La durée du congé varie en fonction du lien de parenté avec la personne déc�
 
 Tableau - Nombre minimal de jours de congés en cas de décès d'un proche
 
-Statut de la personne décédée
+Statut de la personne décédée | Durée du congé
 
-Durée du congé
+Époux(se), partenaire de Pacs ou concubin | 3 jours ou durée plus élevée si elle est prévue par convention collective ou accord collectif d'entreprise
 
-Époux(se), partenaire de Pacs ou concubin
+Père, mère, beau-père ou belle-mère | 3 jours ou durée plus élevée si elle est prévue par convention collective ou accord collectif d’entreprise
 
-3 jours ou durée plus élevée si elle est prévue par convention collective ou accord collectif d'entreprise
+Frère ou sœur | 3 jours ou durée plus élevée si elle est prévue par convention collective ou accord collectif d’entreprise
 
-Père, mère, beau-père ou belle-mère
-
-3 jours ou durée plus élevée si elle est prévue par convention collective ou accord collectif d’entreprise
-
-Frère ou sœur
-
-3 jours ou durée plus élevée si elle est prévue par convention collective ou accord collectif d’entreprise
-
-Autre membre de la famille
-
-Pas de jour de congé.
-
-Toutefois, la convention collective ou un accord applicable dans l’entreprise peut prévoir un congé en cas de décès d'autres membres de la famille.
-
-Par exemple, 1 jour en cas de décès d'un grand-parent, d'un beau-frère ou d'une belle-sœur.
+Autre membre de la famille | Pas de jour de congé. Toutefois, la convention collective ou un accord applicable dans l’entreprise peut prévoir un congé en cas de décès d'autres membres de la famille. Par exemple, 1 jour en cas de décès d'un grand-parent, d'un beau-frère ou d'une belle-sœur.
 
 À savoir
 

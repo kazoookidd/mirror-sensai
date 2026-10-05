@@ -54,33 +54,15 @@ La complémentaire santé peut être un contrat dit responsable dans votre entre
 
 Tableau - Principales prestations d'un contrat responsable
 
-Prestations
+Prestations | Prise en charge
 
-Prise en charge
+Soins courants (consultations et médicaments à SMR majeur remboursés à 65 %) | 100 % de la base de remboursement de la Sécurité sociale
 
-Soins courants (consultations et médicaments à SMR majeur remboursés à 65 %)
+Forfait journalier | 100 % sans limitation de durée
 
-100 % de la base de remboursement de la Sécurité sociale
+Soins dentaires courants (consultations et soins tels qu’un détartrage ou encore un traitement de caries) | 100 % de la base de remboursement de la Sécurité sociale
 
-Forfait journalier
-
-100 % sans limitation de durée
-
-Soins dentaires courants (consultations et soins tels qu’un détartrage ou encore un traitement de caries)
-
-100 % de la base de remboursement de la Sécurité sociale
-
-Optique
-
-100 % de la base de remboursement de la Sécurité sociale.
-
-Pour les frais optiques qui sont au-delà du tarif conventionnel, la complémentaire santé peut offrir en option, de façon cumulative, une prise en charge limitée de la manière suivante :
-
-- Une paire de lunettes tous les 2 ans au maximum (annuellement pour les enfants ou en cas d’évolution de la vue)
-
-- Monture à hauteur de 100 € maximum
-
-- Limites minimales et maximales selon la complexité de l’équipement (exemple : pour un verre simple, prise en charge entre 50 € et 420 €)
+Optique | 100 % de la base de remboursement de la Sécurité sociale. Pour les frais optiques qui sont au-delà du tarif conventionnel, la complémentaire santé peut offrir en option, de façon cumulative, une prise en charge limitée de la manière suivante : - Une paire de lunettes tous les 2 ans au maximum (annuellement pour les enfants ou en cas d’évolution de la vue) - Monture à hauteur de 100 € maximum - Limites minimales et maximales selon la complexité de l’équipement (exemple : pour un verre simple, prise en charge entre 50 € et 420 €)
 
 Le contrat doit être solidaire : l'assuré ne peut pas être soumis à un questionnaire de santé ou être tarifé en fonction de son état de santé.
 
