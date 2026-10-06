@@ -1,0 +1,8 @@
+{
+  "confirm_writes": true,
+  "rules": [
+    {"path": "documents_rh", "access": "read"},
+    {"path": "documents_rh/confidentiel", "access": "none"},
+    {"path": "sorties_rh", "access": "write"}
+  ]
+}
