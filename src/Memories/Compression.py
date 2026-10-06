@@ -3,8 +3,9 @@ import time
 import requests
 from dotenv import load_dotenv
 
-from Memories.Database import get_connection
-from Memories.Memory import load_history_with_ids
+from .Database import get_connection
+from .Memory import load_history_with_ids
+from .Conversations import get_conversation
 
 load_dotenv()  # ensures env vars are available even if this module is
                # imported before Chatbot.py calls load_dotenv() itself
@@ -27,18 +28,18 @@ def estimate_tokens(text: str) -> int:
 
 
 # ---------------------------------------------------------------------
-# Summary state (current, one row per user)
+# Summary state (current, one row per conversation)
 # ---------------------------------------------------------------------
 
-def get_summary(user_id: str) -> dict | None:
-    """Return the current cached summary for a user, or None if they
-    don't have one yet."""
+def get_summary(conversation_id: int) -> dict | None:
+    """Return the current cached summary for a conversation, or None if
+    it doesn't have one yet."""
     conn = get_connection()
     try:
         row = conn.execute(
             "SELECT summary_text, covers_up_to_msg_id, token_count "
-            "FROM summaries WHERE user_id = ?",
-            (user_id,)
+            "FROM summaries WHERE conversation_id = ?",
+            (conversation_id,)
         ).fetchone()
         if row is None:
             return None
@@ -51,22 +52,23 @@ def get_summary(user_id: str) -> dict | None:
         conn.close()
 
 
-def save_summary(user_id: str, summary_text: str, covers_up_to_msg_id: int) -> None:
-    """Upsert the current summary for a user. Overwrites any previous
-    summary — only one active summary per user is kept, by design."""
+def save_summary(conversation_id: int, summary_text: str, covers_up_to_msg_id: int) -> None:
+    """Upsert the current summary for a conversation. Overwrites any
+    previous summary - only one active summary per conversation is kept,
+    by design."""
     token_count = estimate_tokens(summary_text)
     conn = get_connection()
     try:
         conn.execute("""
-            INSERT INTO summaries (user_id, summary_text, covers_up_to_msg_id,
+            INSERT INTO summaries (conversation_id, summary_text, covers_up_to_msg_id,
                                     token_count, updated_at)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET
+            ON CONFLICT(conversation_id) DO UPDATE SET
                 summary_text = excluded.summary_text,
                 covers_up_to_msg_id = excluded.covers_up_to_msg_id,
                 token_count = excluded.token_count,
                 updated_at = CURRENT_TIMESTAMP
-        """, (user_id, summary_text, covers_up_to_msg_id, token_count))
+        """, (conversation_id, summary_text, covers_up_to_msg_id, token_count))
         conn.commit()
     finally:
         conn.close()
@@ -76,28 +78,54 @@ def save_summary(user_id: str, summary_text: str, covers_up_to_msg_id: int) -> N
 # Compression metrics (append-only)
 # ---------------------------------------------------------------------
 
-def log_compression(user_id: str, tokens_before: int, tokens_after: int,
-                     messages_compressed: int, summary_token_count: int,
-                     duration_seconds: float) -> None:
-    """Record one compression event for later reporting (keynote, dashboards)."""
+def log_compression(conversation_id: int, user_id: str, tokens_before: int,
+                     tokens_after: int, messages_compressed: int,
+                     summary_token_count: int, duration_seconds: float) -> None:
+    """Record one compression event for later reporting (keynote, dashboards).
+    user_id is denormalized so cross-conversation stats for a user don't
+    require a join."""
     ratio = 1 - (tokens_after / tokens_before) if tokens_before else 0.0
     conn = get_connection()
     try:
         conn.execute("""
             INSERT INTO compression_logs
-                (user_id, tokens_before, tokens_after, compression_ratio,
-                 messages_compressed, summary_token_count, duration_seconds)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, tokens_before, tokens_after, ratio,
+                (conversation_id, user_id, tokens_before, tokens_after,
+                 compression_ratio, messages_compressed, summary_token_count,
+                 duration_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (conversation_id, user_id, tokens_before, tokens_after, ratio,
               messages_compressed, summary_token_count, duration_seconds))
         conn.commit()
     finally:
         conn.close()
 
 
-def get_compression_stats(user_id: str) -> dict:
-    """Aggregate stats across all compression events for a user —
+def get_compression_stats(conversation_id: int) -> dict:
+    """Aggregate stats across all compression events for one conversation -
     handy for a quick report without re-reading every row manually."""
+    conn = get_connection()
+    try:
+        row = conn.execute("""
+            SELECT
+                COUNT(*) AS total_compressions,
+                COALESCE(SUM(tokens_before - tokens_after), 0) AS tokens_saved,
+                COALESCE(AVG(compression_ratio), 0) AS avg_ratio,
+                COALESCE(SUM(duration_seconds), 0) AS total_duration
+            FROM compression_logs WHERE conversation_id = ?
+        """, (conversation_id,)).fetchone()
+        return {
+            "total_compressions": row["total_compressions"],
+            "tokens_saved": row["tokens_saved"],
+            "avg_ratio": row["avg_ratio"],
+            "total_duration": row["total_duration"],
+        }
+    finally:
+        conn.close()
+
+
+def get_compression_stats_for_user(user_id: str) -> dict:
+    """Aggregate stats across ALL of a user's conversations - useful for
+    a global dashboard rather than a single conversation's report."""
     conn = get_connection()
     try:
         row = conn.execute("""
@@ -119,7 +147,7 @@ def get_compression_stats(user_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------
-# Summarization call (internal, non-streaming — not user-facing)
+# Summarization call (internal, non-streaming - not user-facing)
 # ---------------------------------------------------------------------
 
 def _summarize_with_ollama(base_url: str, model: str,
@@ -171,20 +199,23 @@ def _summarize_with_ollama(base_url: str, model: str,
 
 
 # ---------------------------------------------------------------------
-# Context Builder — the public entry point used by Chatbot.py
+# Context Builder - the public entry point used by Chatbot.py
 # ---------------------------------------------------------------------
 
-def build_context(user_id: str, system_prompt: str, model: str, base_url: str,
-                   budget: int = None, threshold_ratio: float = None,
+def build_context(conversation_id: int, system_prompt: str, model: str,
+                   base_url: str, budget: int = None,
+                   threshold_ratio: float = None,
                    keep_last_n: int = None) -> list[dict]:
     """
     Build the message list to send to Ollama for the NEXT turn, based on
-    stored history only (the current, not-yet-saved user input is NOT
-    included here — the caller appends it after this call).
+    one conversation's stored history only (the current, not-yet-saved
+    user input is NOT included here - the caller appends it after this
+    call).
 
     Behavior:
-    - Loads the cached summary (if any) and only the messages stored
-      AFTER it (covers_up_to_msg_id), never reprocessing old ground.
+    - Loads the cached summary for this conversation (if any) and only
+      the messages stored AFTER it (covers_up_to_msg_id), never
+      reprocessing old ground.
     - If the estimated token count stays under the threshold, returns
       the summary (if any) + all those messages untouched.
     - If it exceeds the threshold, keeps the last `keep_last_n` messages
@@ -202,11 +233,11 @@ def build_context(user_id: str, system_prompt: str, model: str, base_url: str,
     keep_last_n = keep_last_n if keep_last_n is not None else DEFAULT_KEEP_LAST_N
     threshold = budget * threshold_ratio
 
-    summary_row = get_summary(user_id)
+    summary_row = get_summary(conversation_id)
     since_id = summary_row["covers_up_to_msg_id"] if summary_row else 0
     summary_text = summary_row["summary_text"] if summary_row else None
 
-    all_history = load_history_with_ids(user_id)
+    all_history = load_history_with_ids(conversation_id)
     new_messages = [m for m in all_history if m["id"] > since_id]
 
     total_tokens = estimate_tokens(system_prompt)
@@ -244,19 +275,23 @@ def build_context(user_id: str, system_prompt: str, model: str, base_url: str,
         # Drop the old messages without summarizing them (they remain
         # safe in SQLite) and keep going with just the recent ones.
         print(f"\n[Warning: context compression failed, falling back "
-              f"to recent messages only — {e}]")
+              f"to recent messages only - {e}]")
         context = [_wrap_system(system_prompt, summary_text)]
         context.extend({"role": m["role"], "content": m["content"]} for m in to_keep)
         return context
 
     last_summarized_id = to_summarize[-1]["id"]
-    save_summary(user_id, new_summary_text, last_summarized_id)
+    save_summary(conversation_id, new_summary_text, last_summarized_id)
 
     tokens_after = estimate_tokens(system_prompt) + estimate_tokens(new_summary_text)
     tokens_after += sum(estimate_tokens(m["content"]) for m in to_keep)
 
+    conversation = get_conversation(conversation_id)
+    owner_user_id = conversation["user_id"] if conversation else "unknown"
+
     log_compression(
-        user_id=user_id,
+        conversation_id=conversation_id,
+        user_id=owner_user_id,
         tokens_before=tokens_before,
         tokens_after=tokens_after,
         messages_compressed=len(to_summarize),
