@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Sensai — Installation ==="
+echo "=== Sensai - Installation ==="
 
 # --- Check Python version ---
 PYTHON_BIN="python3"

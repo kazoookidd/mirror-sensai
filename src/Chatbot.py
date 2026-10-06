@@ -9,6 +9,10 @@ from Memories.Database import init_db
 from Memories.Auth import get_or_create_user
 from Memories.Memory import save_message, load_history
 from Memories.Compression import build_context
+from Memories.Conversations import (
+    create_conversation,
+    list_conversations,
+)
 
 
 def load_system_prompt(path: str) -> str | None:
@@ -61,8 +65,6 @@ def call_ollama(base_url: str, model: str, messages: list) -> str | None:
     except requests.exceptions.ChunkedEncodingError:
         print("\nError: connection interrupted while streaming.")
         return None
-    finally:
-        response.close()
 
     print()  # saut de ligne final
     return full_reply
@@ -110,6 +112,48 @@ def login_flow() -> str:
         return user["user_id"]
 
 
+def prompt_new_conversation_title() -> str | None:
+    title = input("Title for this conversation (optional, press Enter to skip): ").strip()
+    return title or None
+
+
+def select_conversation(user_id: str) -> int:
+    """Show the user's existing conversations and let them pick one, or
+    start a new one. Returns the chosen conversation_id."""
+    conversations = list_conversations(user_id)
+
+    print("=== Conversations ===")
+    if conversations:
+        for i, conv in enumerate(conversations, start=1):
+            print(f"{i}. {conv['title']}  (last updated: {conv['updated_at']})")
+    else:
+        print("(No conversations yet)")
+
+    choice = input(
+        "Enter a number to resume a conversation, "
+        "or press Enter to start a new one: "
+    ).strip()
+
+    if not choice:
+        title = prompt_new_conversation_title()
+        conversation_id = create_conversation(user_id, title)
+        print(f"Started new conversation #{conversation_id}.\n")
+        return conversation_id
+
+    try:
+        index = int(choice)
+        if 1 <= index <= len(conversations):
+            conv = conversations[index - 1]
+            print(f"Resuming conversation '{conv['title']}'.\n")
+            return conv["id"]
+    except ValueError:
+        pass
+
+    print("Invalid choice, starting a new conversation instead.")
+    conversation_id = create_conversation(user_id)
+    return conversation_id
+
+
 def main():
     load_dotenv()
     init_db()
@@ -132,11 +176,8 @@ def main():
     )
     args = parser.parse_args()
 
-    try:
-        user_id = login_flow()
-    except (EOFError, KeyboardInterrupt):
-        print("\nGoodbye.")
-        return
+    user_id = login_flow()
+    conversation_id = select_conversation(user_id)
 
     system_prompt = load_system_prompt(args.system_prompt)
     if system_prompt:
@@ -145,12 +186,14 @@ def main():
         system_prompt = ""
         print(f"[No system prompt found at {args.system_prompt}, continuing without one]")
 
-    history_count = len(load_history(user_id))
+    history_count = len(load_history(conversation_id))
     if history_count:
-        print(f"[{history_count} previous message(s) on file for {user_id} "
-              f"— context will be compressed automatically if needed]")
+        print(f"[{history_count} previous message(s) in this conversation "
+              f"- context will be compressed automatically if needed]")
 
-    print(f"\nChatbot ready (model: {args.model}). Type 'exit' to quit.\n")
+    print(f"\nChatbot ready (model: {args.model}). "
+          f"Type 'exit' to quit, '/new' for a new conversation, "
+          f"'/conversations' to switch.\n")
 
     while True:
         try:
@@ -159,34 +202,43 @@ def main():
             print("\nGoodbye.")
             break
 
-        if not user_input.strip():
+        stripped = user_input.strip()
+
+        if not stripped:
             print("Error: empty input. Please type something.")
             continue
 
-        if user_input.strip().lower() == "exit":
+        if stripped.lower() == "exit":
             print("Goodbye.")
             break
 
-        # Context built fresh from SQLite every turn (summary + recent
-        # messages, compressed if needed). The current input is appended
-        # only in-memory, and only saved to DB once we have a reply.
-        try:
-            context = build_context(user_id, system_prompt, args.model, args.ollama_url)
-            context.append({"role": "user", "content": user_input})
-
-            print("Assistant: ", end="", flush=True)
-            reply = call_ollama(args.ollama_url, args.model, context)
-        except KeyboardInterrupt:
-            print("\n[Interrupted]")
+        if stripped.lower() == "/new":
+            title = prompt_new_conversation_title()
+            conversation_id = create_conversation(user_id, title)
+            print(f"Started new conversation #{conversation_id}.\n")
             continue
+
+        if stripped.lower() == "/conversations":
+            conversation_id = select_conversation(user_id)
+            continue
+
+        # Context built fresh from SQLite every turn, scoped to the
+        # active conversation (summary + recent messages, compressed if
+        # needed). The current input is appended only in-memory, and
+        # only saved to DB once we have a reply.
+        context = build_context(conversation_id, system_prompt, args.model, args.ollama_url)
+        context.append({"role": "user", "content": user_input})
+
+        print("Assistant: ", end="", flush=True)
+        reply = call_ollama(args.ollama_url, args.model, context)
 
         if reply is None:
             # Nothing was persisted yet for this turn, so there is nothing
-            # to roll back — just let the user retry.
+            # to roll back - just let the user retry.
             continue
 
-        save_message(user_id, "user", user_input)
-        save_message(user_id, "assistant", reply)
+        save_message(conversation_id, "user", user_input)
+        save_message(conversation_id, "assistant", reply)
 
 
 if __name__ == "__main__":
