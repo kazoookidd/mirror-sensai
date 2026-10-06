@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 import sqlite3
-from Memories.Database import get_connection
+from .Database import get_connection
 
 
 def _hash_password(password: str, salt: str) -> str:
