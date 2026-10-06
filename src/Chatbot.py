@@ -13,6 +13,8 @@ from Memories.Conversations import (
     create_conversation,
     list_conversations,
 )
+from Filesystem.Operations import cli_confirm
+from Filesystem.Tools import TOOL_DEFINITIONS, build_filesystem, execute_tool
 
 
 def load_system_prompt(path: str) -> str | None:
@@ -25,19 +27,22 @@ def load_system_prompt(path: str) -> str | None:
         return None
 
 
-def call_ollama(base_url: str, model: str, messages: list) -> str | None:
+class ToolsNotSupported(Exception):
+    pass
+
+
+def call_ollama(base_url: str, model: str, messages: list, tools: list | None = None):
     """Send the full message history to Ollama and stream the response.
-    Returns the full assistant reply as a string, or None if the call failed."""
+    Returns (reply_text, tool_calls) or None if the call failed.
+    Raises ToolsNotSupported if the model rejects the `tools` parameter."""
+    payload = {"model": model, "messages": messages, "stream": True}
+    if tools:
+        payload["tools"] = tools
+
     try:
-        response = requests.post(
-            f"{base_url}/api/chat",
-            json={
-                "model": model,
-                "messages": messages,
-                "stream": True
-            },
-            stream=True
-        )
+        response = requests.post(f"{base_url}/api/chat", json=payload, stream=True)
+        if response.status_code == 400 and tools and "does not support tools" in response.text:
+            raise ToolsNotSupported()
         response.raise_for_status()
     except requests.exceptions.ConnectionError:
         print("Error: cannot connect to Ollama. Is it running? (ollama serve)")
@@ -47,6 +52,8 @@ def call_ollama(base_url: str, model: str, messages: list) -> str | None:
         return None
 
     full_reply = ""
+    tool_calls = []
+    started = False
     try:
         for line in response.iter_lines():
             if not line:
@@ -57,17 +64,59 @@ def call_ollama(base_url: str, model: str, messages: list) -> str | None:
                 print(f"Error from Ollama: {chunk['error']}")
                 return None
 
-            content = chunk.get("message", {}).get("content", "")
-            print(content, end="", flush=True)
-            full_reply += content
+            message = chunk.get("message", {})
+            content = message.get("content", "")
+            if content:
+                if not started:
+                    print("Assistant: ", end="", flush=True)
+                    started = True
+                print(content, end="", flush=True)
+                full_reply += content
+            tool_calls.extend(message.get("tool_calls") or [])
             if chunk.get("done"):
                 break
     except requests.exceptions.ChunkedEncodingError:
         print("\nError: connection interrupted while streaming.")
         return None
 
-    print()  # saut de ligne final
-    return full_reply
+    if started:
+        print()  # saut de ligne final
+    return full_reply, tool_calls
+
+
+MAX_TOOL_ROUNDS = 5
+
+
+def run_turn(base_url: str, model: str, context: list, fs, tools_enabled: bool):
+    """Call the model, execute any tool calls it makes (through the permission
+    layer) and loop until it produces a final answer.
+    Returns (reply, tools_enabled), reply being None on failure."""
+    for _ in range(MAX_TOOL_ROUNDS + 1):
+        try:
+            result = call_ollama(base_url, model, context, TOOL_DEFINITIONS if tools_enabled else None)
+        except ToolsNotSupported:
+            print(f"[Model '{model}' does not support tools: file access disabled]")
+            tools_enabled = False
+            continue
+
+        if result is None:
+            return None, tools_enabled
+
+        reply, tool_calls = result
+        if not tool_calls:
+            return reply, tools_enabled
+
+        context.append({"role": "assistant", "content": reply, "tool_calls": tool_calls})
+        for call in tool_calls:
+            function = call.get("function", {})
+            name = function.get("name", "")
+            arguments = function.get("arguments") or {}
+            print(f"[Tool] {name}({', '.join(f'{k}={v!r}' for k, v in arguments.items() if k != 'content')})")
+            output = execute_tool(fs, name, arguments)
+            context.append({"role": "tool", "tool_name": name, "content": output})
+
+    print("Error: too many consecutive tool calls, giving up on this turn.")
+    return None, tools_enabled
 
 
 def login_flow() -> str:
@@ -179,6 +228,9 @@ def main():
     user_id = login_flow()
     conversation_id = select_conversation(user_id)
 
+    fs = build_filesystem(confirm=cli_confirm, user_id=user_id)
+    tools_enabled = True
+
     system_prompt = load_system_prompt(args.system_prompt)
     if system_prompt:
         print(f"[System prompt loaded from {args.system_prompt}]")
@@ -229,8 +281,7 @@ def main():
         context = build_context(conversation_id, system_prompt, args.model, args.ollama_url)
         context.append({"role": "user", "content": user_input})
 
-        print("Assistant: ", end="", flush=True)
-        reply = call_ollama(args.ollama_url, args.model, context)
+        reply, tools_enabled = run_turn(args.ollama_url, args.model, context, fs, tools_enabled)
 
         if reply is None:
             # Nothing was persisted yet for this turn, so there is nothing
