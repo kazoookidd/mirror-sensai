@@ -1,0 +1,40 @@
+CHARTE DU TÉLÉTRAVAIL : SENSAI SAS
+Version 1.4 : applicable à partir du 1er janvier 2026
+
+1. PRINCIPES
+
+Le télétravail repose sur le volontariat et la confiance. Il est ouvert à tous les salariés ayant terminé leur période d'essai, dont le poste est compatible avec le travail à distance.
+
+2. RYTHME
+
+- Jusqu'à 3 jours de télétravail par semaine.
+- 2 jours de présence sur site minimum, dont le mardi, jour d'équipe.
+- Les jours de télétravail sont convenus avec le manager et inscrits dans le calendrier partagé.
+- Un jour de télétravail ponctuel supplémentaire peut être accordé en cas de grève des transports ou d'intempéries.
+
+3. ÉQUIPEMENT ET INDEMNITÉS
+
+- L'entreprise fournit un ordinateur portable et un second écran sur demande.
+- Une indemnité forfaitaire de 2,50 € par jour télétravaillé est versée avec la paie (plafonnée à 55 € par mois).
+- Les frais de connexion Internet ne sont pas remboursés en plus de cette indemnité.
+
+4. RÈGLES DE FONCTIONNEMENT
+
+- Le salarié est joignable pendant les plages horaires habituelles (9h30 - 12h30 et 14h00 - 17h30).
+- Les réunions d'équipe se font en visioconférence, caméra activée dans la mesure du possible.
+- Le droit à la déconnexion s'applique : aucun message n'est attendu en dehors des horaires de travail.
+
+5. SÉCURITÉ ET CONFIDENTIALITÉ
+
+- Utiliser uniquement le matériel fourni par l'entreprise pour accéder aux outils internes.
+- Se connecter via le VPN de l'entreprise.
+- Ne pas travailler sur des documents confidentiels dans les lieux publics.
+- Verrouiller sa session dès que l'on s'éloigne du poste.
+
+6. RÉVERSIBILITÉ
+
+Le salarié ou l'entreprise peuvent mettre fin au télétravail avec un préavis de 1 mois, ou immédiatement en cas de manquement aux règles de sécurité.
+
+7. CONTACT
+
+Pour toute question : rh@sensai.example

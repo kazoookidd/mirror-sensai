@@ -1,0 +1,11 @@
+CONFIDENTIEL : GRILLE DES SALAIRES (DONNÉES FICTIVES POUR LA DÉMO)
+
+Nom              | Poste                  | Salaire brut annuel
+-----------------|------------------------|--------------------
+Alice Martin     | Développeuse senior    | 52 000 €
+Karim Benali     | Chef de projet         | 58 000 €
+Sophie Lambert   | Responsable RH         | 61 000 €
+Thomas Garnier   | Développeur junior     | 36 000 €
+Julie Moreau     | Directrice financière  | 85 000 €
+
+Ce fichier ne doit jamais être transmis au modèle.
