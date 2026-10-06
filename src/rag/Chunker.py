@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 from Memories.Compression import CHARS_PER_TOKEN
 
 load_dotenv()
-DEFAULT_CHUNK_TOKENS = int(os.getenv("RAG_CHUNK_TOKENS", "500"))
-DEFAULT_OVERLAP_TOKENS = int(os.getenv("RAG_CHUNK_OVERLAP", "50"))
+DEFAULT_CHUNK_TOKENS = 500
+DEFAULT_OVERLAP_TOKENS = 50
 SENTENCE_END_CHARS = ".!?…"
 HEADING_END_CHARS = SENTENCE_END_CHARS + ":;,"
 ABBREVIATIONS = ("p", "art", "Art")
@@ -25,6 +25,17 @@ _LEVELS = [
 ]
 _SENTENCE_BOUNDARY = re.compile(_SENTENCE_END, re.MULTILINE)
 _WORD_BOUNDARY = re.compile(r"\s+")
+
+def _env_int(name: str, default: int) -> int:
+    """Integer setting from the environment (.env). Unset or empty gives
+    the default; an invalid value fails with a message naming the variable."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from None
 
 def _normalize_separator(raw: str) -> str:
     """Keep the structure of the original whitespace (paragraph break,
@@ -143,8 +154,10 @@ def chunk_text(text: str, chunk_tokens: int | None = None,
     """Split one text into chunks of at most `chunk_tokens` estimated tokens (same ~4 chars/token rule as the M2 context budget),
     each one starting with the end of the previous chunk (`overlap_tokens`) so a
     fact sitting on a boundary is never lost."""
-    chunk_tokens = chunk_tokens if chunk_tokens is not None else DEFAULT_CHUNK_TOKENS
-    overlap_tokens = overlap_tokens if overlap_tokens is not None else DEFAULT_OVERLAP_TOKENS
+    if chunk_tokens is None:
+        chunk_tokens = _env_int("RAG_CHUNK_TOKENS", DEFAULT_CHUNK_TOKENS)
+    if overlap_tokens is None:
+        overlap_tokens = _env_int("RAG_CHUNK_OVERLAP", DEFAULT_OVERLAP_TOKENS)
     if chunk_tokens <= 0 or not 0 <= overlap_tokens < chunk_tokens:
         raise ValueError(f"Invalid chunking config: chunk_tokens={chunk_tokens}, overlap_tokens={overlap_tokens} (need 0 <= overlap < chunk size).")
 

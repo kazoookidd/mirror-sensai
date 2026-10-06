@@ -290,6 +290,27 @@ class ChunkerTests(unittest.TestCase):
             root.setLevel(previous)
         self.assertIn("unsupported file type", output)
 
+    def test_env_settings_default_when_empty_and_explain_invalid(self):
+        names = ("RAG_CHUNK_TOKENS", "RAG_CHUNK_OVERLAP")
+        saved = {name: os.environ.get(name) for name in names}
+        text = " ".join(SENTENCES)
+        try:
+            os.environ["RAG_CHUNK_TOKENS"] = ""
+            os.environ["RAG_CHUNK_OVERLAP"] = ""
+            self.assertEqual(chunk_text(text), chunk_text(text, 500, 50))
+            os.environ["RAG_CHUNK_TOKENS"] = "60"
+            os.environ["RAG_CHUNK_OVERLAP"] = "10"
+            self.assertEqual(chunk_text(text), chunk_text(text, 60, 10))
+            os.environ["RAG_CHUNK_TOKENS"] = "abc"
+            with self.assertRaisesRegex(ValueError, "RAG_CHUNK_TOKENS must be an integer, got 'abc'"):
+                chunk_text(text)
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_invalid_config_raises(self):
         for size, overlap in ((0, 0), (50, 50), (50, -1)):
             with self.assertRaises(ValueError):
