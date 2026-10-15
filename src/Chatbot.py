@@ -9,42 +9,32 @@ from dotenv import load_dotenv
 from Memories.Database import init_db
 from Memories.Auth import get_or_create_user
 from Memories.Memory import save_message, load_history
-from Memories.Compression import build_context
-from Memories.Conversations import (
-    create_conversation,
-    list_conversations,
+from Memories.Compression import build_context, estimate_tokens
+from Memories.TokenLimit import (
+    ACTION_BLOCK,
+    LIMIT_ACTIONS,
+    blocked_message,
+    estimate_context_tokens,
+    format_usage,
+    is_over_limit,
+    parse_bool,
+    parse_limit_action,
+    small,
+    warning_message,
 )
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
-from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
+from Commands import Session, handle_command, select_conversation
 
 FALLBACK_SYSTEM_PROMPT = "You are Sensai, a helpful assistant."
 
-HELP_TEXT = """Available commands:
-  /help                 show this help
-  /new                  start a new conversation
-  /conversations        list your conversations and switch to one
-  /personas             list the available personas
-  /persona [id|number]  show the current persona, or switch to another one
-  /models               list the models installed in Ollama
-  /model [name|number]  show the current model, or switch to another one
-  exit                  quit
-
-Switching persona or model keeps the conversation history."""
-
 
 @dataclass
-class Session:
-    """State that can change while the chatbot is running."""
-    user_id: str
-    conversation_id: int
-    model: str
-    persona_id: str
-    personas: dict
-    ollama_url: str
-
-    @property
-    def persona(self) -> dict:
-        return self.personas[self.persona_id]
+class Reply:
+    """A completed answer from the model, with the token counts Ollama
+    reports in its last streamed chunk (None when it did not report them)."""
+    text: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 def load_system_prompt(path: str) -> str | None:
@@ -57,9 +47,14 @@ def load_system_prompt(path: str) -> str | None:
         return None
 
 
-def call_ollama(base_url: str, model: str, messages: list) -> str | None:
+def _as_count(value) -> int | None:
+    """Ollama's token counts are plain integers; anything else is ignored."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def call_ollama(base_url: str, model: str, messages: list) -> Reply | None:
     """Send the full message history to Ollama and stream the response.
-    Returns the full assistant reply as a string, or None if the call failed."""
+    Returns the full answer with its token counts, or None if the call failed."""
     try:
         response = requests.post(
             f"{base_url}/api/chat",
@@ -79,6 +74,8 @@ def call_ollama(base_url: str, model: str, messages: list) -> str | None:
         return None
 
     full_reply = ""
+    prompt_tokens = None
+    completion_tokens = None
     try:
         for line in response.iter_lines():
             if not line:
@@ -93,13 +90,16 @@ def call_ollama(base_url: str, model: str, messages: list) -> str | None:
             print(content, end="", flush=True)
             full_reply += content
             if chunk.get("done"):
+                # Only the last chunk carries the real token counts.
+                prompt_tokens = _as_count(chunk.get("prompt_eval_count"))
+                completion_tokens = _as_count(chunk.get("eval_count"))
                 break
     except requests.exceptions.ChunkedEncodingError:
         print("\nError: connection interrupted while streaming.")
         return None
 
     print()  # saut de ligne final
-    return full_reply
+    return Reply(full_reply, prompt_tokens, completion_tokens)
 
 
 def login_flow() -> str:
@@ -144,157 +144,52 @@ def login_flow() -> str:
         return user["user_id"]
 
 
-def prompt_new_conversation_title() -> str | None:
-    title = input("Title for this conversation (optional, press Enter to skip): ").strip()
-    return title or None
+def chat_turn(session: Session, user_input: str) -> bool:
+    """Run one user -> assistant exchange.
+    Returns True when the exchange completed and was saved, False when it
+    was refused (token limit) or failed (nothing is persisted in that case)."""
+    # Context built fresh from SQLite every turn, scoped to the active
+    # conversation (summary + recent messages, compressed if needed). The
+    # system prompt comes from the ACTIVE persona and the model is the
+    # ACTIVE model, so both can change between two turns without touching
+    # the stored history. The current input is appended only in-memory, and
+    # only saved to DB once we have a reply.
+    context = build_context(
+        session.conversation_id,
+        session.persona["system_prompt"],
+        session.model,
+        session.ollama_url,
+    )
+    context.append({"role": "user", "content": user_input})
 
+    # Token limit: compression had its chance, this is what is left.
+    context_tokens = estimate_context_tokens(context)
+    if is_over_limit(context_tokens):
+        if session.token_limit_action == ACTION_BLOCK:
+            print(blocked_message(context_tokens))
+            return False
+        print(warning_message(context_tokens))
 
-def select_conversation(user_id: str) -> int:
-    """Show the user's existing conversations and let them pick one, or
-    start a new one. Returns the chosen conversation_id."""
-    conversations = list_conversations(user_id)
+    print("Assistant: ", end="", flush=True)
+    reply = call_ollama(session.ollama_url, session.model, context)
 
-    print("=== Conversations ===")
-    if conversations:
-        for i, conv in enumerate(conversations, start=1):
-            print(f"{i}. {conv['title']}  (last updated: {conv['updated_at']})")
-    else:
-        print("(No conversations yet)")
-
-    choice = input(
-        "Enter a number to resume a conversation, "
-        "or press Enter to start a new one: "
-    ).strip()
-
-    if not choice:
-        title = prompt_new_conversation_title()
-        conversation_id = create_conversation(user_id, title)
-        print(f"Started new conversation #{conversation_id}.\n")
-        return conversation_id
-
-    try:
-        index = int(choice)
-        if 1 <= index <= len(conversations):
-            conv = conversations[index - 1]
-            print(f"Resuming conversation '{conv['title']}'.\n")
-            return conv["id"]
-    except ValueError:
-        pass
-
-    print("Invalid choice, starting a new conversation instead.")
-    conversation_id = create_conversation(user_id)
-    return conversation_id
-
-
-# ---------------------------------------------------------------------
-# Slash commands (persona / model switching at runtime)
-# ---------------------------------------------------------------------
-
-def print_personas(session: Session) -> None:
-    print("=== Personas ===")
-    for i, (persona_id, persona) in enumerate(session.personas.items(), start=1):
-        marker = "*" if persona_id == session.persona_id else " "
-        description = f" — {persona['description']}" if persona["description"] else ""
-        print(f"{marker} {i}. {persona_id}: {persona['name']}{description}")
-    print("(* = active)  Switch with /persona <id or number>")
-
-
-def switch_persona(session: Session, requested: str) -> None:
-    if not requested:
-        print(f"Current persona: {session.persona['name']} ({session.persona_id})")
-        print_personas(session)
-        return
-
-    persona_id = resolve_persona(requested, session.personas)
-    if persona_id is None:
-        print(f"Error: unknown persona '{requested}'. Type /personas to see the list.")
-        return
-
-    session.persona_id = persona_id
-    print(f"Persona switched to '{session.persona['name']}'. "
-          f"The conversation history is kept.")
-
-
-def print_models(session: Session, installed: list[str]) -> None:
-    print("=== Models installed in Ollama ===")
-    if not installed:
-        print("(none — pull one with: ollama pull <name>)")
-    # Ollama resolves "llama3" to "llama3:latest", so the active model may be
-    # configured without its tag and still be installed.
-    active = resolve_model(session.model, installed)
-    for i, name in enumerate(installed, start=1):
-        marker = "*" if name == active else " "
-        note = "   (embedding model, not usable for chat)" if looks_like_embedding_model(name) else ""
-        print(f"{marker} {i}. {name}{note}")
-    if active is None:
-        print(f"Note: the current model '{session.model}' is not in this list.")
-    print("(* = active)  Switch with /model <name or number>")
-
-
-def show_models(session: Session) -> None:
-    try:
-        installed = list_models(session.ollama_url)
-    except RuntimeError as e:
-        print(f"Error: {e}")
-        return
-    print_models(session, installed)
-
-
-def switch_model(session: Session, requested: str) -> None:
-    if not requested:
-        print(f"Current model: {session.model}")
-        show_models(session)
-        return
-
-    try:
-        installed = list_models(session.ollama_url)
-    except RuntimeError as e:
-        print(f"Error: {e} (model unchanged: {session.model})")
-        return
-
-    model = resolve_model(requested, installed)
-    if model is None:
-        print(f"Error: model '{requested}' is not installed. "
-              f"Pull it with: ollama pull {requested}")
-        print_models(session, installed)
-        return
-
-    if looks_like_embedding_model(model):
-        print(f"Warning: '{model}' looks like an embedding model and may not "
-              f"be able to answer chat messages.")
-
-    session.model = model
-    print(f"Model switched to '{session.model}'. The conversation history is kept.")
-
-
-def handle_command(session: Session, text: str) -> bool:
-    """Run a slash command if `text` is one. Returns True when the input
-    was a command (and must NOT be sent to the model), False otherwise."""
-    if not text.startswith("/"):
+    if reply is None:
+        # Nothing was persisted yet for this turn, so there is nothing
+        # to roll back — just let the user retry.
         return False
 
-    command, _, argument = text.partition(" ")
-    command = command.lower()
-    argument = argument.strip()
+    save_message(session.conversation_id, "user", user_input)
+    save_message(session.conversation_id, "assistant", reply.text)
 
-    if command == "/help":
-        print(HELP_TEXT)
-    elif command == "/new":
-        title = prompt_new_conversation_title()
-        session.conversation_id = create_conversation(session.user_id, title)
-        print(f"Started new conversation #{session.conversation_id}.\n")
-    elif command == "/conversations":
-        session.conversation_id = select_conversation(session.user_id)
-    elif command == "/personas":
-        print_personas(session)
-    elif command == "/persona":
-        switch_persona(session, argument)
-    elif command == "/models":
-        show_models(session)
-    elif command == "/model":
-        switch_model(session, argument)
-    else:
-        print(f"Unknown command '{command}'. Type /help to see the available commands.")
+    if session.show_token_usage:
+        # Prefer Ollama's own counts; fall back to the estimate if absent.
+        approximate = reply.prompt_tokens is None or reply.completion_tokens is None
+        prompt_tokens = reply.prompt_tokens if reply.prompt_tokens is not None else context_tokens
+        completion_tokens = (
+            reply.completion_tokens if reply.completion_tokens is not None
+            else estimate_tokens(reply.text)
+        )
+        print(small(format_usage(prompt_tokens, completion_tokens, approximate)))
     return True
 
 
@@ -331,6 +226,13 @@ def main():
         help="Persona active at startup (overrides .env DEFAULT_PERSONA). "
              "Can be changed at runtime with /persona"
     )
+    parser.add_argument(
+        "--on-token-limit",
+        default=os.getenv("TOKEN_LIMIT_ACTION"),
+        help=f"What to do when the context is over the token limit, even after "
+             f"compression: {' or '.join(LIMIT_ACTIONS)} "
+             f"(overrides .env TOKEN_LIMIT_ACTION)"
+    )
     args = parser.parse_args()
 
     user_id = login_flow()
@@ -354,6 +256,10 @@ def main():
               f"falling back to '{DEFAULT_PERSONA_ID}']")
         persona_id = DEFAULT_PERSONA_ID
 
+    token_limit_action, action_warning = parse_limit_action(args.on_token_limit)
+    if action_warning:
+        print(f"[Warning: {action_warning}]")
+
     session = Session(
         user_id=user_id,
         conversation_id=conversation_id,
@@ -361,6 +267,9 @@ def main():
         persona_id=persona_id,
         personas=personas,
         ollama_url=args.ollama_url,
+        search_motor="tavily",
+        token_limit_action=token_limit_action,
+        show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
     )
 
     history_count = len(load_history(session.conversation_id))
@@ -391,30 +300,7 @@ def main():
         if handle_command(session, stripped):
             continue
 
-        # Context built fresh from SQLite every turn, scoped to the
-        # active conversation (summary + recent messages, compressed if
-        # needed). The system prompt comes from the ACTIVE persona and the
-        # model is the ACTIVE model, so both can change between two turns
-        # without touching the stored history. The current input is
-        # appended only in-memory, and only saved to DB once we have a reply.
-        context = build_context(
-            session.conversation_id,
-            session.persona["system_prompt"],
-            session.model,
-            session.ollama_url,
-        )
-        context.append({"role": "user", "content": user_input})
-
-        print("Assistant: ", end="", flush=True)
-        reply = call_ollama(session.ollama_url, session.model, context)
-
-        if reply is None:
-            # Nothing was persisted yet for this turn, so there is nothing
-            # to roll back — just let the user retry.
-            continue
-
-        save_message(session.conversation_id, "user", user_input)
-        save_message(session.conversation_id, "assistant", reply)
+        chat_turn(session, user_input)
 
 
 if __name__ == "__main__":

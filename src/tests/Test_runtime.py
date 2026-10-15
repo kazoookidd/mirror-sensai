@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
-from Chatbot import Session, handle_command
+from Commands import Session, handle_command
 
 INSTALLED = ["nomic-embed-text:latest", "mistral:7b", "llama3:latest"]
 
@@ -63,6 +63,7 @@ class RuntimeTestCase(unittest.TestCase):
         values = dict(
             user_id="alice", conversation_id=1, model="llama3:latest",
             persona_id=DEFAULT_PERSONA_ID, personas=personas, ollama_url=self.url,
+            search_motor="tavily",
         )
         values.update(overrides)
         return Session(**values)
