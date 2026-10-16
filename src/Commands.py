@@ -6,6 +6,8 @@ type that starts with "/" (and the conversation picker it relies on) lives
 here, so the two files can evolve independently.
 """
 
+import json
+import sqlite3
 from dataclasses import dataclass
 
 from Memories.Conversations import (
@@ -13,6 +15,8 @@ from Memories.Conversations import (
     list_conversations,
 )
 from Memories.TokenLimit import DEFAULT_ACTION
+from StructuredOutput.Extractor import StructuredOutputError, extract_leave_request
+from StructuredOutput.Store import list_leave_requests, save_leave_request
 from Runtime.Personas import resolve_persona
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Tools.web_search import print_search_moteur, switch_search_motor
@@ -27,10 +31,14 @@ HELP_TEXT = """Available commands:
   /model [name|number]          show the current model, or switch to another one
   /switch_search [name|number]  switch the search motor
   /search                       list the search motors
+  /leave <your request>         file a leave request in plain language
+                                (e.g. /leave I take Nov 3 to 7 for a holiday)
+  /leaves                       list the leave requests you have filed
   exit                          quit
 
 
-Switching persona or model keeps the conversation history."""
+Switching persona or model keeps the conversation history.
+/conge and /conges are accepted as aliases of /leave and /leaves."""
 
 
 @dataclass
@@ -103,7 +111,7 @@ def print_personas(session: Session) -> None:
     print("=== Personas ===")
     for i, (persona_id, persona) in enumerate(session.personas.items(), start=1):
         marker = "*" if persona_id == session.persona_id else " "
-        description = f" — {persona['description']}" if persona["description"] else ""
+        description = f" : {persona['description']}" if persona["description"] else ""
         print(f"{marker} {i}. {persona_id}: {persona['name']}{description}")
     print("(* = active)  Switch with /persona <id or number>")
 
@@ -127,7 +135,7 @@ def switch_persona(session: Session, requested: str) -> None:
 def print_models(session: Session, installed: list[str]) -> None:
     print("=== Models installed in Ollama ===")
     if not installed:
-        print("(none — pull one with: ollama pull <name>)")
+        print("(none, pull one with: ollama pull <name>)")
     # Ollama resolves "llama3" to "llama3:latest", so the active model may be
     # configured without its tag and still be installed.
     active = resolve_model(session.model, installed)
@@ -176,6 +184,52 @@ def switch_model(session: Session, requested: str) -> None:
     print(f"Model switched to '{session.model}'. The conversation history is kept.")
 
 
+# ---------------------------------------------------------------------
+# Leave requests (structured output)
+# ---------------------------------------------------------------------
+
+def file_leave_request(session: Session, text: str) -> None:
+    if not text:
+        print("Usage: /leave <your request in plain language>")
+        print("Example: /leave I take Nov 3 to 7 for a holiday")
+        return
+
+    print("Analysing your request...")
+    try:
+        data = extract_leave_request(text, session.ollama_url, session.model)
+    except StructuredOutputError as e:
+        print(f"Error: {e}")
+        print("Nothing was saved.")
+        return
+
+    try:
+        request_id = save_leave_request(session.user_id, data)
+    except sqlite3.Error as e:
+        print(f"Error: could not save the request ({e}).")
+        return
+
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(f"Leave request #{request_id} saved for {session.user_id}. "
+          f"See all yours with /leaves.")
+
+
+def print_leave_requests(session: Session) -> None:
+    try:
+        requests_ = list_leave_requests(session.user_id)
+    except sqlite3.Error as e:
+        print(f"Error: could not read your leave requests ({e}).")
+        return
+
+    print("=== Your leave requests ===")
+    if not requests_:
+        print("(none yet, file one with /leave <your request>)")
+        return
+    for r in requests_:
+        reason = f" : {r['reason']}" if r["reason"] else ""
+        print(f"#{r['id']}  {r['start_date']} -> {r['end_date']}  "
+              f"{r['leave_type']}{reason}")
+
+
 def handle_command(session: Session, text: str) -> bool:
     """Run a slash command if `text` is one. Returns True when the input
     was a command (and must NOT be sent to the model), False otherwise."""
@@ -206,6 +260,10 @@ def handle_command(session: Session, text: str) -> bool:
         print_search_moteur(session)
     elif command == "/switch_search":
         switch_search_motor(session, argument)
+    elif command in ("/leave", "/conge"):
+        file_leave_request(session, argument)
+    elif command in ("/leaves", "/conges"):
+        print_leave_requests(session)
     else:
         print(f"Unknown command '{command}'. Type /help to see the available commands.")
     return True

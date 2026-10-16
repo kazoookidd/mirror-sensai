@@ -11,6 +11,7 @@ Usage (from the project root):
 import io
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -18,6 +19,7 @@ import unittest
 from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest import mock
 
 # src/tests/Test_runtime.py -> one level up is src/, same as Chatbot.py
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -25,6 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
 from Commands import Session, handle_command
+from StructuredOutput.Extractor import StructuredOutputError
 
 INSTALLED = ["nomic-embed-text:latest", "mistral:7b", "llama3:latest"]
 
@@ -237,9 +240,73 @@ class TestCommands(RuntimeTestCase):
 
     def test_help_lists_every_runtime_command(self):
         _, output = self.run_command(self.make_session(), "/help")
-        for command in ("/personas", "/persona", "/models", "/model", "/new", "/conversations"):
+        for command in ("/personas", "/persona", "/models", "/model", "/new", "/conversations",
+                        "/leave", "/leaves"):
             self.assertIn(command, output)
 
+
+VALID_LEAVE = {
+    "leave_type": "paid_leave",
+    "start_date": "2026-11-03",
+    "end_date": "2026-11-07",
+    "reason": "vacances",
+}
+
+
+class TestLeaveCommand(RuntimeTestCase):
+
+    def test_leave_extracts_and_saves_for_the_session_user(self):
+        with mock.patch("Commands.extract_leave_request", return_value=VALID_LEAVE) as extract, \
+             mock.patch("Commands.save_leave_request", return_value=7) as save:
+            handled, output = self.run_command(self.make_session(), "/leave Je pose du 3 au 7 novembre")
+        self.assertTrue(handled)
+        extract.assert_called_once_with("Je pose du 3 au 7 novembre", self.url, "llama3:latest")
+        save.assert_called_once_with("alice", VALID_LEAVE)
+        self.assertIn("2026-11-03", output)
+        self.assertIn("#7", output)
+
+    def test_conge_is_an_alias(self):
+        with mock.patch("Commands.extract_leave_request", return_value=VALID_LEAVE), \
+             mock.patch("Commands.save_leave_request", return_value=1) as save:
+            self.run_command(self.make_session(), "/conge demain")
+        save.assert_called_once()
+
+    def test_leave_without_text_shows_usage_and_does_not_call_the_model(self):
+        with mock.patch("Commands.extract_leave_request") as extract:
+            handled, output = self.run_command(self.make_session(), "/leave")
+        self.assertTrue(handled)
+        self.assertIn("Usage", output)
+        extract.assert_not_called()
+
+    def test_leave_failure_prints_error_and_saves_nothing(self):
+        error = StructuredOutputError("cannot connect to Ollama.")
+        with mock.patch("Commands.extract_leave_request", side_effect=error), \
+             mock.patch("Commands.save_leave_request") as save:
+            handled, output = self.run_command(self.make_session(), "/leave demain")
+        self.assertTrue(handled)
+        self.assertIn("cannot connect to Ollama", output)
+        self.assertIn("Nothing was saved", output)
+        save.assert_not_called()
+
+    def test_leave_database_error_is_reported(self):
+        with mock.patch("Commands.extract_leave_request", return_value=VALID_LEAVE), \
+             mock.patch("Commands.save_leave_request", side_effect=sqlite3.IntegrityError("fk")):
+            _, output = self.run_command(self.make_session(), "/leave demain")
+        self.assertIn("could not save", output)
+
+    def test_leaves_lists_the_requests_of_the_user(self):
+        rows = [{"id": 3, "leave_type": "paid_leave", "start_date": "2026-11-03",
+                 "end_date": "2026-11-07", "reason": "vacances", "created_at": ""}]
+        with mock.patch("Commands.list_leave_requests", return_value=rows) as listing:
+            _, output = self.run_command(self.make_session(), "/leaves")
+        listing.assert_called_once_with("alice")
+        self.assertIn("#3", output)
+        self.assertIn("vacances", output)
+
+    def test_leaves_when_empty(self):
+        with mock.patch("Commands.list_leave_requests", return_value=[]):
+            _, output = self.run_command(self.make_session(), "/leaves")
+        self.assertIn("none yet", output)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
