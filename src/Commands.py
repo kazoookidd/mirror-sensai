@@ -24,6 +24,12 @@ from Runtime.Parameters import (
     describe_temperature,
     parse_temperature,
 )
+from Runtime.Settings import (
+    SETTINGS,
+    apply_setting,
+    current_value,
+    find_setting,
+)
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Tools.web_search import print_search_moteur, switch_search_motor
 
@@ -36,6 +42,8 @@ HELP_TEXT = """Available commands:
   /models                       list the models installed in Ollama
   /model [name|number]          show the current model, or switch to another one
   /temperature [value|default]  show or set how creative the answers are (0 to 2)
+  /settings [name [value]]      list the settings, or show/change one
+                                (e.g. /settings token-limit continue)
   /switch_search [name|number]  switch the search motor
   /search                       list the search motors
   /leave <your request>         file a leave request in plain language
@@ -44,7 +52,8 @@ HELP_TEXT = """Available commands:
   exit                          quit
 
 
-Switching persona, model or temperature keeps the conversation history.
+Switching persona, model or any setting keeps the conversation history.
+/set is accepted as an alias of /settings.
 (/leave always runs at temperature 0 so its result is reproducible.)
 /conge and /conges are accepted as aliases of /leave and /leaves."""
 
@@ -259,6 +268,45 @@ def set_temperature(session: Session, requested: str) -> None:
           f"It applies to the next answers.")
 
 
+def print_settings(session: Session) -> None:
+    print("=== Settings ===")
+    width = max(len(s.name) for s in SETTINGS)
+    value_width = max(len(current_value(session, s)) for s in SETTINGS)
+    for setting in SETTINGS:
+        print(f"  {setting.name:<{width}}  {current_value(session, setting):<{value_width}}  "
+              f"{setting.summary}")
+    print("Change one with /settings <name> <value>, "
+          "or see what it accepts with /settings <name>.")
+
+
+def change_setting(session: Session, argument: str) -> None:
+    if not argument:
+        print_settings(session)
+        return
+
+    name, _, value = argument.partition(" ")
+    value = value.strip()
+    setting = find_setting(name)
+    if setting is None:
+        print(f"Error: unknown setting '{name}'.")
+        print_settings(session)
+        return
+
+    if not value:
+        print(f"{setting.name}: {current_value(session, setting)}")
+        print(f"  {setting.summary}")
+        print(f"  Accepts: {setting.accepted}")
+        return
+
+    previous = current_value(session, setting)
+    new_value, error = apply_setting(session, setting, value)
+    if error:
+        print(f"Error: {error} {setting.name} unchanged: {previous}.")
+        print(f"  Accepts: {setting.accepted}")
+        return
+    print(f"{setting.name} set to {new_value}. It applies to the next answers.")
+
+
 def handle_command(session: Session, text: str) -> bool:
     """Run a slash command if `text` is one. Returns True when the input
     was a command (and must NOT be sent to the model), False otherwise."""
@@ -291,6 +339,8 @@ def handle_command(session: Session, text: str) -> bool:
         switch_search_motor(session, argument)
     elif command == "/temperature":
         set_temperature(session, argument)
+    elif command in ("/settings", "/set"):
+        change_setting(session, argument)
     elif command in ("/leave", "/conge"):
         file_leave_request(session, argument)
     elif command in ("/leaves", "/conges"):
