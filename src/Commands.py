@@ -18,6 +18,12 @@ from Memories.TokenLimit import DEFAULT_ACTION
 from StructuredOutput.Extractor import StructuredOutputError, extract_leave_request
 from StructuredOutput.Store import list_leave_requests, save_leave_request
 from Runtime.Personas import resolve_persona
+from Runtime.Parameters import (
+    MAX_TEMPERATURE,
+    MIN_TEMPERATURE,
+    describe_temperature,
+    parse_temperature,
+)
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Tools.web_search import print_search_moteur, switch_search_motor
 
@@ -29,6 +35,7 @@ HELP_TEXT = """Available commands:
   /persona [id|number]          show the current persona, or switch to another one
   /models                       list the models installed in Ollama
   /model [name|number]          show the current model, or switch to another one
+  /temperature [value|default]  show or set how creative the answers are (0 to 2)
   /switch_search [name|number]  switch the search motor
   /search                       list the search motors
   /leave <your request>         file a leave request in plain language
@@ -37,7 +44,8 @@ HELP_TEXT = """Available commands:
   exit                          quit
 
 
-Switching persona or model keeps the conversation history.
+Switching persona, model or temperature keeps the conversation history.
+(/leave always runs at temperature 0 so its result is reproducible.)
 /conge and /conges are accepted as aliases of /leave and /leaves."""
 
 
@@ -55,6 +63,8 @@ class Session:
     token_limit_action: str = DEFAULT_ACTION
     # Show the small token usage line under each answer
     show_token_usage: bool = True
+    # Sampling temperature of the chat answers; None = the model's default
+    temperature: float | None = None
 
     @property
     def persona(self) -> dict:
@@ -230,6 +240,25 @@ def print_leave_requests(session: Session) -> None:
               f"{r['leave_type']}{reason}")
 
 
+def set_temperature(session: Session, requested: str) -> None:
+    if not requested:
+        print(f"Current temperature: {describe_temperature(session.temperature)}")
+        print(f"Set it with /temperature <{MIN_TEMPERATURE:g} to {MAX_TEMPERATURE:g}> "
+              f"(low = precise and repeatable, high = creative), "
+              f"or /temperature default for the model's own value.")
+        return
+
+    temperature, error = parse_temperature(requested)
+    if error:
+        print(f"Error: {error} Temperature unchanged: "
+              f"{describe_temperature(session.temperature)}.")
+        return
+
+    session.temperature = temperature
+    print(f"Temperature set to {describe_temperature(temperature)}. "
+          f"It applies to the next answers.")
+
+
 def handle_command(session: Session, text: str) -> bool:
     """Run a slash command if `text` is one. Returns True when the input
     was a command (and must NOT be sent to the model), False otherwise."""
@@ -260,6 +289,8 @@ def handle_command(session: Session, text: str) -> bool:
         print_search_moteur(session)
     elif command == "/switch_search":
         switch_search_motor(session, argument)
+    elif command == "/temperature":
+        set_temperature(session, argument)
     elif command in ("/leave", "/conge"):
         file_leave_request(session, argument)
     elif command in ("/leaves", "/conges"):
