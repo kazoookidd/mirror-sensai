@@ -171,6 +171,20 @@ class TestCallOllama(ServerTestCase):
         self.assertEqual((reply.prompt_tokens, reply.completion_tokens), (30, 5))
         self.assertEqual(output, "Hello there\n")  # still streamed, counts not printed here
 
+    def test_no_options_are_sent_by_default(self):
+        self.run_call()
+        self.assertNotIn("options", FakeChatHandler.received[0])
+
+    def test_temperature_is_sent_to_ollama_when_set(self):
+        with redirect_stdout(io.StringIO()):
+            call_ollama(self.url, "llama3", [{"role": "user", "content": "hi"}], temperature=0.2)
+        self.assertEqual(FakeChatHandler.received[0]["options"], {"temperature": 0.2})
+
+    def test_temperature_zero_is_sent_and_not_mistaken_for_unset(self):
+        with redirect_stdout(io.StringIO()):
+            call_ollama(self.url, "llama3", [{"role": "user", "content": "hi"}], temperature=0.0)
+        self.assertEqual(FakeChatHandler.received[0]["options"], {"temperature": 0.0})
+
     def test_counts_are_none_when_ollama_does_not_report_them(self):
         FakeChatHandler.report_counts = False
         reply, _ = self.run_call()
@@ -230,6 +244,14 @@ class TestChatTurn(ServerTestCase):
         FakeChatHandler.eval_count = 9
         _, output = self.run_turn(self.make_session(), "hello")
         self.assertIn("tokens: 78 in · 9 out · context 87% (87/100)", output)
+
+    def test_chat_turn_sends_the_session_temperature(self):
+        self.run_turn(self.make_session(temperature=0.4), "hello")
+        self.assertEqual(FakeChatHandler.received[-1]["options"], {"temperature": 0.4})
+
+    def test_chat_turn_sends_no_options_on_the_model_default(self):
+        self.run_turn(self.make_session(), "hello")
+        self.assertNotIn("options", FakeChatHandler.received[-1])
 
     def test_usage_line_can_be_turned_off(self):
         _, output = self.run_turn(self.make_session(show_token_usage=False), "hello")

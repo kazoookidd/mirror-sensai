@@ -25,6 +25,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
+from Runtime.Parameters import describe_temperature, parse_temperature
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
 from Commands import Session, handle_command
 from StructuredOutput.Extractor import StructuredOutputError
@@ -241,8 +242,152 @@ class TestCommands(RuntimeTestCase):
     def test_help_lists_every_runtime_command(self):
         _, output = self.run_command(self.make_session(), "/help")
         for command in ("/personas", "/persona", "/models", "/model", "/new", "/conversations",
-                        "/leave", "/leaves"):
+                        "/leave", "/leaves", "/temperature"):
             self.assertIn(command, output)
+
+
+class TestTemperature(RuntimeTestCase):
+    """Generation parameter: temperature."""
+
+    def test_parse_accepts_numbers_and_a_decimal_comma(self):
+        self.assertEqual(parse_temperature("0.7"), (0.7, None))
+        self.assertEqual(parse_temperature("0,7"), (0.7, None))
+        self.assertEqual(parse_temperature(" 0 "), (0.0, None))
+        self.assertEqual(parse_temperature("2"), (2.0, None))
+
+    def test_parse_default_words_and_unset_mean_the_model_default(self):
+        for value in (None, "", "  ", "default", "AUTO", "reset"):
+            self.assertEqual(parse_temperature(value), (None, None), value)
+
+    def test_parse_rejects_invalid_values_without_clamping(self):
+        for value in ("abc", "-0.1", "2.1", "nan", "inf", "1.2.3"):
+            temperature, error = parse_temperature(value)
+            self.assertIsNone(temperature, value)
+            self.assertIn(value, error)
+
+    def test_describe(self):
+        self.assertEqual(describe_temperature(None), "model default")
+        self.assertIn("deterministic", describe_temperature(0.0))
+        self.assertEqual(describe_temperature(0.7), "0.7")
+
+    def test_session_starts_on_the_model_default(self):
+        self.assertIsNone(self.make_session().temperature)
+
+    def test_command_sets_the_temperature(self):
+        session = self.make_session()
+        handled, output = self.run_command(session, "/temperature 0.3")
+        self.assertTrue(handled)
+        self.assertEqual(session.temperature, 0.3)
+        self.assertIn("0.3", output)
+
+    def test_command_without_argument_shows_the_current_value(self):
+        session = self.make_session(temperature=1.2)
+        _, output = self.run_command(session, "/temperature")
+        self.assertIn("1.2", output)
+        self.assertEqual(session.temperature, 1.2)
+
+    def test_command_default_resets(self):
+        session = self.make_session(temperature=1.2)
+        self.run_command(session, "/temperature default")
+        self.assertIsNone(session.temperature)
+
+    def test_invalid_value_leaves_the_temperature_unchanged(self):
+        session = self.make_session(temperature=0.5)
+        for bad in ("hot", "5", "-1"):
+            _, output = self.run_command(session, f"/temperature {bad}")
+            self.assertIn("Error", output)
+            self.assertIn("unchanged", output)
+            self.assertEqual(session.temperature, 0.5)
+
+    def test_temperature_does_not_touch_the_conversation_or_model(self):
+        session = self.make_session()
+        self.run_command(session, "/temperature 0.9")
+        self.assertEqual((session.conversation_id, session.model), (1, "llama3:latest"))
+
+
+class TestSettings(RuntimeTestCase):
+    """/settings: change the assistant's settings while it runs."""
+
+    def test_lists_every_setting_with_its_current_value(self):
+        session = self.make_session(temperature=0.4, token_limit_action="continue",
+                                    show_token_usage=False)
+        handled, output = self.run_command(session, "/settings")
+        self.assertTrue(handled)
+        for name in ("temperature", "token-limit", "token-usage"):
+            self.assertIn(name, output)
+        for value in ("0.4", "continue", "off"):
+            self.assertIn(value, output)
+
+    def test_set_is_an_alias(self):
+        session = self.make_session()
+        self.run_command(session, "/set temperature 0.2")
+        self.assertEqual(session.temperature, 0.2)
+
+    def test_changes_temperature_like_the_dedicated_command(self):
+        session = self.make_session()
+        self.run_command(session, "/settings temperature 0,7")
+        self.assertEqual(session.temperature, 0.7)
+        self.run_command(session, "/settings temperature default")
+        self.assertIsNone(session.temperature)
+
+    def test_changes_token_limit_action(self):
+        session = self.make_session()
+        self.assertEqual(session.token_limit_action, "block")
+        self.run_command(session, "/settings token-limit continue")
+        self.assertEqual(session.token_limit_action, "continue")
+        self.run_command(session, "/settings token-limit block")
+        self.assertEqual(session.token_limit_action, "block")
+
+    def test_changes_token_usage_display(self):
+        session = self.make_session()
+        for text, expected in (("off", False), ("on", True), ("false", False), ("YES", True)):
+            self.run_command(session, f"/settings token-usage {text}")
+            self.assertIs(session.show_token_usage, expected, text)
+
+    def test_names_are_case_and_underscore_insensitive_and_have_aliases(self):
+        session = self.make_session()
+        self.run_command(session, "/settings TOKEN_LIMIT continue")
+        self.assertEqual(session.token_limit_action, "continue")
+        self.run_command(session, "/settings show_token_usage off")
+        self.assertFalse(session.show_token_usage)
+        self.run_command(session, "/settings temp 1")
+        self.assertEqual(session.temperature, 1.0)
+
+    def test_name_alone_shows_the_value_and_what_it_accepts(self):
+        session = self.make_session(token_limit_action="continue")
+        _, output = self.run_command(session, "/settings token-limit")
+        self.assertIn("continue", output)
+        self.assertIn("block", output)  # accepted values are listed
+        self.assertEqual(session.token_limit_action, "continue")
+
+    def test_invalid_values_are_refused_and_nothing_changes(self):
+        session = self.make_session(temperature=0.5, token_limit_action="continue",
+                                    show_token_usage=True)
+        for command in ("/settings temperature hot", "/settings temperature 9",
+                        "/settings token-limit maybe", "/settings token-usage perhaps"):
+            _, output = self.run_command(session, command)
+            self.assertIn("Error", output, command)
+            self.assertIn("unchanged", output, command)
+        self.assertEqual(session.temperature, 0.5)
+        self.assertEqual(session.token_limit_action, "continue")
+        self.assertTrue(session.show_token_usage)
+
+    def test_unknown_setting_lists_the_available_ones(self):
+        session = self.make_session()
+        handled, output = self.run_command(session, "/settings colour blue")
+        self.assertTrue(handled)
+        self.assertIn("unknown setting 'colour'", output)
+        self.assertIn("temperature", output)
+
+    def test_changing_a_setting_keeps_the_rest_of_the_session(self):
+        session = self.make_session()
+        self.run_command(session, "/settings token-limit continue")
+        self.assertEqual((session.conversation_id, session.model, session.persona_id),
+                         (1, "llama3:latest", DEFAULT_PERSONA_ID))
+
+    def test_help_mentions_settings(self):
+        _, output = self.run_command(self.make_session(), "/help")
+        self.assertIn("/settings", output)
 
 
 VALID_LEAVE = {
