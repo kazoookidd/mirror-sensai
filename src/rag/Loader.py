@@ -8,33 +8,40 @@ from pdfminer.pdfdocument import PDFPasswordIncorrect
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 
-DOT_LEADER_MIN = 4
-# "(cid:N)": glyph with no Unicode mapping. U+E000-U+F8FF: font-private
-# symbols such as Word's Wingdings bullets, meaningless outside that font.
-_UNMAPPED_GLYPH = re.compile(r"\(cid:\d+\)|[\ue000-\uf8ff]")
-_DOT_LEADER = re.compile(rf"\.{{{DOT_LEADER_MIN},}}")
+TEXT_EXTENSIONS = (".txt", ".md")
+PDF_EXTENSION = ".pdf"
+SUPPORTED_EXTENSIONS = (*TEXT_EXTENSIONS, PDF_EXTENSION)
+_UNREADABLE_CHARS = re.compile(r"\(cid:\d+\)|[\ue000-\uf8ff]")
+_DOT_LEADER = re.compile(r"\.{4,}")
 
 logger = logging.getLogger(__name__)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
+
+def _tidy_line(line: str) -> str:
+    """One space between words, indentation kept."""
+    words = line.split()
+    if not words:
+        return ""
+    indent = line[:len(line) - len(line.lstrip())]
+    return indent + " ".join(words)
+
+
 def _clean(text: str) -> str:
-    """Normalize line endings and whitespace without destroying the
-    paragraph structure the chunker relies on (blank lines). NFKC turns
-    PDF ligatures back into letters ("ﬁ" -> "fi"), and table of contents
-    dot leaders ("Titre ........ 11") are shortened. Runs of spaces and
-    tabs inside a line (justified PDF text) become one space; indentation
-    at the start of a line is kept."""
+    """Fix ligatures, dot leaders and extra spaces, keep paragraphs."""
     text = unicodedata.normalize("NFKC", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\f", "\n")
     text = _DOT_LEADER.sub("...", text)
-    text = re.sub(r"(?<=\S)(?:[^\S\n]{2,}|\t)", " ", text)
-    text = re.sub(r"[^\S\n]+\n", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    lines = []
+    for line in text.split("\n"):
+        line = _tidy_line(line)
+        if line or (lines and lines[-1]):
+            lines.append(line)
+    return "\n".join(lines).strip()
+
 
 def _load_text_file(path: Path, source: str) -> list[dict]:
-    """A .txt/.md file has no pages: it is returned as a single page
-    with page=None."""
+    """Read a .txt or .md file as a single page."""
     try:
         text = _clean(path.read_text(encoding="utf-8-sig"))
     except UnicodeDecodeError:
@@ -43,15 +50,14 @@ def _load_text_file(path: Path, source: str) -> list[dict]:
     except OSError as e:
         logger.warning(f"cannot read {source}, skipped ({e})")
         return []
-
     if not text:
         logger.warning(f"{source} is empty, skipped")
         return []
     return [{"source": source, "page": None, "text": text}]
 
+
 def _text_blocks(container) -> list[str]:
-    """Text blocks of a page layout, including the ones drawn inside
-    figures (Form XObjects), which pdfminer does not expose at top level."""
+    """Text blocks of a PDF page, figures included."""
     blocks = []
     for element in container:
         if isinstance(element, LTTextContainer):
@@ -60,12 +66,9 @@ def _text_blocks(container) -> list[str]:
             blocks.extend(_text_blocks(element))
     return blocks
 
+
 def _read_pdf_pages(path: Path, source: str):
-    """Yield (page_number, raw_text) for every page, 1-based, in order.
-    pdfminer's layout analysis groups text into blocks, which become
-    paragraphs (blank lines) here. Pages are processed one by one: a page
-    that cannot be read is logged and yielded empty, so a broken page does
-    not cost the others and the numbering stays exact."""
+    """Yield (page_number, raw_text) for each page, empty if the page is broken."""
     with open(path, "rb") as f:
         manager = PDFResourceManager()
         device = PDFPageAggregator(manager, laparams=LAParams(all_texts=True))
@@ -79,66 +82,71 @@ def _read_pdf_pages(path: Path, source: str):
                 raw = ""
             yield number, raw
 
-def _load_pdf(path: Path, source: str) -> list[dict]:
-    """One entry per PDF page that contains text, with its 1-based page
-    number so answers can cite "p. 4". Protected, damaged and text-less
-    PDFs give a warning instead of an exception."""
+
+def _read_pdf_text(path: Path, source: str) -> list[dict] | None:
+    """Cleaned text of each PDF page, or None if the PDF cannot be opened."""
     pages = []
     number = 0
     try:
         for number, raw in _read_pdf_pages(path, source):
-            text = _clean(_UNMAPPED_GLYPH.sub("", raw))
+            text = _clean(_UNREADABLE_CHARS.sub("", raw))
             if text:
                 pages.append({"source": source, "page": number, "text": text})
     except PDFPasswordIncorrect:
         logger.warning(f"{source} is password-protected, skipped")
-        return []
+        return None
     except Exception as e:
         if number == 0:
             logger.warning(f"cannot read PDF {source}, skipped ({e})")
-            return []
-        logger.warning(f"{source} is damaged after page {number}, "
-                       f"later pages skipped ({e})")
-
-    if not pages:
-        logger.warning(f"{source} has no extractable text "
-                       f"(scanned PDF? OCR is not supported), skipped")
+            return None
+        logger.warning(f"{source} is damaged after page {number}, later pages skipped ({e})")
     return pages
 
-READERS = {".txt": _load_text_file, ".md": _load_text_file, ".pdf": _load_pdf}
-SUPPORTED_EXTENSIONS = frozenset(READERS)
+
+def _load_pdf(path: Path, source: str) -> list[dict]:
+    """Read a PDF, one entry per page with text."""
+    pages = _read_pdf_text(path, source)
+    if pages is None:
+        return []
+    if not pages:
+        logger.warning(f"{source} has no extractable text " f"(scanned PDF? OCR is not supported), skipped")
+    return pages
+
 
 def load_document(path: str | Path, source: str | None = None) -> list[dict]:
-    """Read one supported document and return its pages as
-    {"source", "page", "text"} dicts. Returns [] (with a logged warning) for
-    unsupported, unreadable or empty files instead of raising."""
+    """Pages of one file, [] when it cannot be read."""
     path = Path(path)
-    source = source or path.name
+    if not source:
+        source = path.name
     extension = path.suffix.lower()
-    reader = READERS.get(extension)
-    if reader is None:
-        logger.warning(f"unsupported file type {source}, skipped "
-                       f"(supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))})")
-        return []
-    return reader(path, source)
+    if extension in TEXT_EXTENSIONS:
+        return _load_text_file(path, source)
+    if extension == PDF_EXTENSION:
+        return _load_pdf(path, source)
+    logger.warning(f"unsupported file type {source}, skipped "
+                   f"(supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))})")
+    return []
+
+
+def list_documents(folder: Path) -> list[tuple[Path, str]]:
+    """Every non-hidden file under `folder`, as (path, relative path)."""
+    documents = []
+    for path in sorted(folder.rglob("*")):
+        relative = path.relative_to(folder)
+        if path.is_file() and not any(p.startswith(".") for p in relative.parts):
+            documents.append((path, relative.as_posix()))
+    return documents
+
 
 def load_directory(folder: str | Path) -> list[dict]:
-    """Load every supported document under `folder` (recursively), in a
-    stable order. Sources are paths relative to `folder`, so two files
-    with the same name in different subfolders stay distinguishable.
-    Hidden files (.DS_Store, ...) are ignored silently."""
+    """Load every document under `folder`."""
     folder = Path(folder)
     if not folder.is_dir():
         logger.warning(f"{folder} is not a directory, nothing loaded")
         return []
-
     pages = []
-    for path in sorted(folder.rglob("*")):
-        relative = path.relative_to(folder)
-        if not path.is_file() or any(p.startswith(".") for p in relative.parts):
-            continue
-        pages.extend(load_document(path, source=relative.as_posix()))
-
+    for path, source in list_documents(folder):
+        pages.extend(load_document(path, source=source))
     if not pages:
         logger.warning(f"no readable document found in {folder}")
     return pages
