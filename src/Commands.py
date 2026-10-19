@@ -77,6 +77,12 @@ class Session:
     show_token_usage: bool = True
     # Sampling temperature of the chat answers; None = the model's default
     temperature: float | None = None
+    # Let the model use its tools (web search...) when it judges it useful
+    tools_enabled: bool = True
+    # ToolRegistry built at startup (None = no tools available), see Agents/Setup.py
+    tools: object | None = None
+    # Print a dimmed line for each tool the agent uses
+    show_tool_activity: bool = True
 
     @property
     def persona(self) -> dict:
