@@ -9,6 +9,7 @@ here, so the two files can evolve independently.
 import json
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 
 from Memories.Conversations import (
     create_conversation,
@@ -32,6 +33,7 @@ from Runtime.Settings import (
 )
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Tools.web_search import print_search_moteur, switch_search_motor
+from rag.Store import DEFAULT_DOCS_DIR, index_directory
 
 HELP_TEXT = """Available commands:
   /help                         show this help
@@ -49,6 +51,7 @@ HELP_TEXT = """Available commands:
   /leave <your request>         file a leave request in plain language
                                 (e.g. /leave I take Nov 3 to 7 for a holiday)
   /leaves                       list the leave requests you have filed
+  /ingest [folder]              index HR documents so answers can use them (default: data/docs)
   exit                          quit
 
 
@@ -307,6 +310,23 @@ def change_setting(session: Session, argument: str) -> None:
     print(f"{setting.name} set to {new_value}. It applies to the next answers.")
 
 
+def ingest_documents(argument: str) -> None:
+    """Index a folder of documents for the RAG."""
+    folder = DEFAULT_DOCS_DIR
+    if argument:
+        folder = Path(argument)
+    if not folder.is_dir():
+        print(f"Error: {folder} is not a folder. Usage: /ingest [folder]")
+        return
+    print(f"Indexing {folder}...")
+    stats = index_directory(folder)
+    if stats["failed"]:
+        print("Indexing stopped: Ollama did not answer.")
+        return
+    print(f"{stats['indexed']} document(s) indexed ({stats['chunks']} chunks), "
+          f"{stats['unchanged']} unchanged, {stats['removed']} removed.")
+
+
 def handle_command(session: Session, text: str) -> bool:
     """Run a slash command if `text` is one. Returns True when the input
     was a command (and must NOT be sent to the model), False otherwise."""
@@ -345,6 +365,8 @@ def handle_command(session: Session, text: str) -> bool:
         file_leave_request(session, argument)
     elif command in ("/leaves", "/conges"):
         print_leave_requests(session)
+    elif command == "/ingest":
+        ingest_documents(argument)
     else:
         print(f"Unknown command '{command}'. Type /help to see the available commands.")
     return True

@@ -2,3 +2,4 @@ requests
 python-dotenv
 pdfminer.six
 beautifulsoup4
+numpy

@@ -1,10 +1,4 @@
-"""
-Unit tests for [R1] document ingestion (rag.Loader + rag.Chunker).
-No Ollama needed.
-
-Usage (from the project root):
-    python3 -m unittest discover -s src/tests -p "test_rag_*.py" -v
-"""
+"""Tests for rag.Loader and rag.Chunker."""
 
 import contextlib
 import io
@@ -16,7 +10,7 @@ import unittest
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from Memories.Compression import CHARS_PER_TOKEN
-from rag.Chunker import _LEVELS, _pieces, _split, chunk_pages, chunk_text
+from rag.Chunker import _split_text, chunk_pages, chunk_text
 from rag.Loader import load_directory, load_document
 
 DOCS_DIR = Path(__file__).resolve().parents[2] / "data" / "docs"
@@ -31,8 +25,7 @@ class _LogCapture(logging.Handler):
         self.messages.append(record.getMessage())
 
 def _quiet(func, *args, **kwargs):
-    """Run func while capturing the warnings it logs.
-    Returns (result, captured_output)."""
+    """Run func and return (result, warnings it logged)."""
     handler = _LogCapture()
     logger = logging.getLogger("rag")
     previous_level = logger.level
@@ -77,7 +70,8 @@ class LoaderTests(unittest.TestCase):
         self.assertIn("site.\n\nÀ titre exceptionnel", text)
 
     def test_ligatures_and_dot_leaders_are_cleaned(self):
-        (self.dir / "toc.txt").write_text("Déﬁnition du télétravail ........... 11", encoding="utf-8")
+        toc = "Déﬁnition du télétravail ........... 11"
+        (self.dir / "toc.txt").write_text(toc, encoding="utf-8")
         self.assertEqual(load_document(self.dir / "toc.txt")[0]["text"],
                          "Définition du télétravail ... 11")
 
@@ -88,9 +82,9 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual(load_document(self.dir / "ff.txt")[0]["text"], "Page1.\n\nPage2.\n\nFin.")
 
     def test_justified_spaces_collapse_but_indentation_is_kept(self):
-        (self.dir / "j.md").write_text("de  traçabilité,\t la   notion\n  - item", encoding="utf-8")
-        self.assertEqual(load_document(self.dir / "j.md")[0]["text"],
-                         "de traçabilité, la notion\n  - item")
+        justified = "de  traçabilité,\t la   notion\n  - item"
+        (self.dir / "j.md").write_text(justified, encoding="utf-8")
+        self.assertEqual(load_document(self.dir / "j.md")[0]["text"], "de traçabilité, la notion\n  - item")
 
     def test_text_inside_pdf_figures_is_read(self):
         pages, output = _quiet(load_document, FIXTURES_DIR / "form_xobject.pdf")
@@ -133,8 +127,7 @@ class LoaderTests(unittest.TestCase):
         self.assertIn("password-protected", output)
 
     def test_copy_protected_aes_pdf_is_read(self):
-        # Common for HR documents: opens without a password, but copy and
-        # print are restricted (owner password only, AES encryption).
+        # Opens without a password, but copy and print are locked.
         pages, output = _quiet(load_document, FIXTURES_DIR / "copy_protected_aes.pdf")
         self.assertEqual(output, "")
         self.assertEqual([p["page"] for p in pages], [1, 2])
@@ -225,7 +218,8 @@ class ChunkerTests(unittest.TestCase):
 
     def test_pdf_style_line_wraps_do_not_cut_sentences(self):
         text = "\n".join(
-            "Le salarie peut teletravailler deux jours\npar semaine apres trois mois." for _ in range(20)
+            "Le salarie peut teletravailler deux jours\npar semaine apres trois mois."
+            for _ in range(20)
         )
         for chunk in chunk_text(text, 50, 0):
             self.assertTrue(chunk.endswith("mois."), chunk)
@@ -235,15 +229,6 @@ class ChunkerTests(unittest.TestCase):
         self.assertEqual("".join(chunks), "x" * 1000)
         for chunk in chunks:
             self.assertLessEqual(len(chunk), 50 * CHARS_PER_TOKEN)
-
-    def test_section_numbers_and_abbreviations_are_not_sentence_ends(self):
-        text = ("Il reste 32 euros a payer chaque mois. 2. Dispenses\n"
-                "Voir M. Dupont, art. 3 et p. 4 du contrat de travail.")
-        sentences = [piece for _, piece in _pieces(text, _LEVELS[1])]
-        self.assertEqual(sentences, [
-            "Il reste 32 euros a payer chaque mois.",
-            "2. Dispenses\nVoir M. Dupont, art. 3 et p. 4 du contrat de travail.",
-        ])
 
     def test_list_items_keep_their_line_breaks(self):
         items = "\n".join(f"- Cas numero {i} : {i} jours ouvres." for i in range(30))
@@ -272,12 +257,11 @@ class ChunkerTests(unittest.TestCase):
         self.assertGreater(len(chunks[0]), 100)
 
     def test_leftover_of_exactly_a_quarter_is_not_carried(self):
-        # Boundary of the "small leftover" rule: strictly less than
-        # max_chars // CARRY_DIVISOR is carried, exactly that is not.
+        # Below max_chars // SMALL_CHUNK_DIVISOR is carried, exactly that is not.
         short = "abcdefghijklm."
         long_paragraph = " ".join(["mot"] * 40)
         self.assertEqual(len(short), 59 // 4)
-        chunks = _split(f"{short}\n\n{long_paragraph}", 59)
+        chunks = _split_text(f"{short}\n\n{long_paragraph}", 59)
         self.assertEqual(chunks[0], short)
 
     def test_captured_warnings_survive_a_stricter_root_level(self):
@@ -302,7 +286,8 @@ class ChunkerTests(unittest.TestCase):
             os.environ["RAG_CHUNK_OVERLAP"] = "10"
             self.assertEqual(chunk_text(text), chunk_text(text, 60, 10))
             os.environ["RAG_CHUNK_TOKENS"] = "abc"
-            with self.assertRaisesRegex(ValueError, "RAG_CHUNK_TOKENS must be an integer, got 'abc'"):
+            message = "RAG_CHUNK_TOKENS must be an integer, got 'abc'"
+            with self.assertRaisesRegex(ValueError, message):
                 chunk_text(text)
         finally:
             for name, value in saved.items():

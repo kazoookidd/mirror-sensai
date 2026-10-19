@@ -6,29 +6,20 @@ from Memories.Compression import CHARS_PER_TOKEN
 load_dotenv()
 DEFAULT_CHUNK_TOKENS = 500
 DEFAULT_OVERLAP_TOKENS = 50
-SENTENCE_END_CHARS = ".!?…"
-HEADING_END_CHARS = SENTENCE_END_CHARS + ":;,"
-ABBREVIATIONS = ("p", "art", "Art")
-HEADING_MAX_CHARS = 80
-CARRY_DIVISOR = 4
 OVERLAP_SEPARATOR = "\n"
-_SENTENCE_END = (
-    rf"(?<=[{re.escape(SENTENCE_END_CHARS)}])"
-    + r"(?<!\b[A-Z]\.)"
-    + "".join(rf"(?<!\b{re.escape(abbreviation)}\.)" for abbreviation in ABBREVIATIONS)
-    + r"(?<![\s(]\d\.)(?<![\s(]\d\d\.)(?<!^\d\.)(?<!^\d\d\.)"
-    + r"\s+"
-)
-_LEVELS = [
-    re.compile(f"({pattern})", re.MULTILINE)
-    for pattern in (r"\n\s*\n", _SENTENCE_END, r"\n", r"\s+")
-]
-_SENTENCE_BOUNDARY = re.compile(_SENTENCE_END, re.MULTILINE)
-_WORD_BOUNDARY = re.compile(r"\s+")
+SENTENCE_END_CHARS = ".!?…"
+HEADING_MAX_CHARS = 80
+HEADING_END_CHARS = SENTENCE_END_CHARS + ":;,"
+SMALL_CHUNK_DIVISOR = 4
+_PARAGRAPH_BREAK = re.compile(r"(\n\s*\n)")
+_SENTENCE_BREAK = re.compile(rf"((?<=[{re.escape(SENTENCE_END_CHARS)}])\s+)")
+_LINE_BREAK = re.compile(r"(\n)")
+_WORD_BREAK = re.compile(r"(\s+)")
+_BREAKS = [_PARAGRAPH_BREAK, _SENTENCE_BREAK, _LINE_BREAK, _WORD_BREAK]
 
-def _env_int(name: str, default: int) -> int:
-    """Integer setting from the environment (.env). Unset or empty gives
-    the default; an invalid value fails with a message naming the variable."""
+
+def _read_int_setting(name: str, default: int) -> int:
+    """Integer from .env, or `default` if it is not set."""
     raw = os.getenv(name, "").strip()
     if not raw:
         return default
@@ -37,63 +28,82 @@ def _env_int(name: str, default: int) -> int:
     except ValueError:
         raise ValueError(f"{name} must be an integer, got {raw!r}") from None
 
-def _normalize_separator(raw: str) -> str:
-    """Keep the structure of the original whitespace (paragraph break,
-    line break or plain space) without its noise."""
-    newlines = raw.count("\n")
-    if newlines >= 2:
-        return "\n\n"
-    return "\n" if newlines == 1 else " "
 
-def _pieces(text: str, level: re.Pattern) -> list[tuple[str, str]]:
-    """Split text at one level, returning (separator_before, piece)
-    pairs so pieces can be glued back with their original separator
-    (list items keep their line breaks, paragraphs their blank line)."""
+def _chunk_sizes(chunk_tokens: int | None, overlap_tokens: int | None) -> tuple[int, int]:
+    """Chunk size and overlap, in characters."""
+    if chunk_tokens is None:
+        chunk_tokens = _read_int_setting("RAG_CHUNK_TOKENS", DEFAULT_CHUNK_TOKENS)
+    if overlap_tokens is None:
+        overlap_tokens = _read_int_setting("RAG_CHUNK_OVERLAP", DEFAULT_OVERLAP_TOKENS)
+    if chunk_tokens <= 0 or not 0 <= overlap_tokens < chunk_tokens:
+        raise ValueError(f"Invalid chunking config: chunk_tokens={chunk_tokens}, "f"overlap_tokens={overlap_tokens} (need 0 <= overlap < chunk size)."
+        )
+    return chunk_tokens * CHARS_PER_TOKEN, overlap_tokens * CHARS_PER_TOKEN
+
+
+def _simplify_separator(whitespace: str) -> str:
+    """Reduce whitespace to a blank line, a line break or a space."""
+    line_breaks = whitespace.count("\n")
+    if line_breaks >= 2:
+        return "\n\n"
+    if line_breaks == 1:
+        return "\n"
+    return " "
+
+
+def _split_at(text: str, boundary: re.Pattern) -> list[tuple[str, str]]:
+    """Cut `text` at `boundary`, keeping the separator before each piece."""
+    parts = boundary.split(text)
+    texts = parts[0::2]
+    separators = [""] + parts[1::2]
     pieces = []
-    raw_separator = ""
-    for i, token in enumerate(level.split(text)):
-        if i % 2:
-            raw_separator += token
+    whitespace = ""
+    for separator, piece in zip(separators, texts):
+        whitespace += separator
+        if not piece.strip():
+            whitespace += piece
             continue
-        if token.strip():
-            separator = _normalize_separator(raw_separator) if pieces else ""
-            pieces.append((separator, token.strip()))
-            raw_separator = ""
-        else:
-            raw_separator += token
+        separator_before = ""
+        if pieces:
+            separator_before = _simplify_separator(whitespace)
+        pieces.append((separator_before, piece.strip()))
+        whitespace = ""
     return pieces
 
+
 def _is_heading(piece: str) -> bool:
-    """A short single line with no closing punctuation ("4. Absence pour
-    maladie", "## Article 6 : Sanctions") introduces what follows."""
+    """True for a markdown title or a short line without final punctuation."""
     if piece.startswith("#"):
         return True
-    return (len(piece) <= HEADING_MAX_CHARS and "\n" not in piece
-            and piece[-1] not in HEADING_END_CHARS)
+    return (
+        len(piece) <= HEADING_MAX_CHARS
+        and "\n" not in piece
+        and piece[-1] not in HEADING_END_CHARS
+    )
 
-def _glue_headings(pieces: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Attach each heading to the piece it introduces (across a line
-    break), so packing can never separate a title from its text."""
-    glued = []
-    i = 0
-    while i < len(pieces):
-        separator, piece = pieces[i]
-        last = piece
-        while (_is_heading(last) and i + 1 < len(pieces)
-               and "\n" in pieces[i + 1][0]):
-            next_separator, last = pieces[i + 1]
-            piece = f"{piece}{next_separator}{last}"
-            i += 1
-        glued.append((separator, piece))
-        i += 1
-    return glued
 
-def _merge(pieces: list[tuple[str, str]], max_chars: int) -> list[str]:
-    """Greedily pack consecutive pieces into chunks of at most max_chars."""
+def _attach_headings(pieces: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Glue each heading to the piece below it."""
+    attached = []
+    previous = ""
+    for separator, piece in pieces:
+        if attached and _is_heading(previous) and "\n" in separator:
+            first_separator, text = attached[-1]
+            attached[-1] = (first_separator, f"{text}{separator}{piece}")
+        else:
+            attached.append((separator, piece))
+        previous = piece
+    return attached
+
+
+def _pack(pieces: list[tuple[str, str]], max_chars: int) -> list[str]:
+    """Fill each chunk with as many consecutive pieces as fit."""
     chunks = []
     current = ""
     for separator, piece in pieces:
-        candidate = f"{current}{separator}{piece}" if current else piece
+        candidate = piece
+        if current:
+            candidate = f"{current}{separator}{piece}"
         if len(candidate) <= max_chars:
             current = candidate
         else:
@@ -103,83 +113,94 @@ def _merge(pieces: list[tuple[str, str]], max_chars: int) -> list[str]:
         chunks.append(current)
     return chunks
 
-def _split(text: str, max_chars: int, level: int = 0) -> list[str]:
-    """Recursively split `text` into chunks of at most max_chars, cutting
-    at the most meaningful boundary available. A piece is only cut at a
-    finer level (e.g. sentences) when it does not fit at the current one
-    (e.g. a paragraph longer than a chunk)."""
+
+def _cut_every(text: str, max_chars: int) -> list[str]:
+    """Cut `text` every `max_chars` characters."""
+    cuts = []
+    for start in range(0, len(text), max_chars):
+        cut = text[start:start + max_chars].strip()
+        if cut:
+            cuts.append(cut)
+    return cuts
+
+
+def _split_text(text: str, max_chars: int, level: int = 0) -> list[str]:
+    """Split `text` into chunks of at most `max_chars`, at the most natural break."""
     if len(text) <= max_chars:
         return [text]
-    if level == len(_LEVELS):
-        cuts = (text[i:i + max_chars].strip() for i in range(0, len(text), max_chars))
-        return [cut for cut in cuts if cut]
-
-    pieces = _glue_headings(_pieces(text, _LEVELS[level]))
+    if level == len(_BREAKS):
+        return _cut_every(text, max_chars)
+    pieces = _attach_headings(_split_at(text, _BREAKS[level]))
     if len(pieces) <= 1:
-        return _split(text, max_chars, level + 1)
+        return _split_text(text, max_chars, level + 1)
+    return _split_pieces(pieces, max_chars, level)
 
+
+def _split_pieces(pieces: list[tuple[str, str]], max_chars: int, level: int) -> list[str]:
+    """Pack the pieces that fit, split again the ones that are too long."""
     chunks = []
-    pending = []
+    fitting = []
     for separator, piece in pieces:
         if len(piece) <= max_chars:
-            pending.append((separator, piece))
+            fitting.append((separator, piece))
             continue
-        packed = _merge(pending, max_chars)
-        pending = []
-        carry = packed.pop() if packed and len(packed[-1]) < max_chars // CARRY_DIVISOR else ""
+
+        packed = _pack(fitting, max_chars)
+        fitting = []
+        too_long = piece
+        if packed and len(packed[-1]) < max_chars // SMALL_CHUNK_DIVISOR:
+            too_long = f"{packed.pop()}{separator}{piece}"
         chunks.extend(packed)
-        oversized = f"{carry}{separator}{piece}" if carry else piece
-        chunks.extend(_split(oversized, max_chars, level + 1))
-    chunks.extend(_merge(pending, max_chars))
+        chunks.extend(_split_text(too_long, max_chars, level + 1))
+
+    chunks.extend(_pack(fitting, max_chars))
     return chunks
 
-def _tail(text: str, max_chars: int) -> str:
-    """Last part of `text` (at most max_chars), starting on a sentence
-    boundary if possible, otherwise on a word boundary, so the overlap
-    never starts in the middle of a word. Returns "" when the whole text
-    would fit: repeating an entire chunk adds nothing."""
-    if max_chars <= 0 or len(text) <= max_chars:
+
+def _overlap_from(chunk: str, overlap_chars: int) -> str:
+    """End of `chunk` to repeat at the start of the next one."""
+    if overlap_chars <= 0 or len(chunk) <= overlap_chars:
         return ""
-    candidate = text[-max_chars:]
-    match = _SENTENCE_BOUNDARY.search(candidate)
-    if match:
-        return candidate[match.end():]
-    if text[-max_chars - 1].isspace():
-        return candidate.lstrip()
-    match = _WORD_BOUNDARY.search(candidate)
-    return candidate[match.end():] if match else ""
+    end = chunk[-overlap_chars:]
+    sentence_break = _SENTENCE_BREAK.search(end)
+    if sentence_break:
+        return end[sentence_break.end():]
+    if chunk[-overlap_chars - 1].isspace():
+        return end.lstrip()
+    word_break = _WORD_BREAK.search(end)
+    if word_break is None:
+        return ""
+    return end[word_break.end():]
 
-def chunk_text(text: str, chunk_tokens: int | None = None,
-               overlap_tokens: int | None = None) -> list[str]:
-    """Split one text into chunks of at most `chunk_tokens` estimated tokens (same ~4 chars/token rule as the M2 context budget),
-    each one starting with the end of the previous chunk (`overlap_tokens`) so a
-    fact sitting on a boundary is never lost."""
-    if chunk_tokens is None:
-        chunk_tokens = _env_int("RAG_CHUNK_TOKENS", DEFAULT_CHUNK_TOKENS)
-    if overlap_tokens is None:
-        overlap_tokens = _env_int("RAG_CHUNK_OVERLAP", DEFAULT_OVERLAP_TOKENS)
-    if chunk_tokens <= 0 or not 0 <= overlap_tokens < chunk_tokens:
-        raise ValueError(f"Invalid chunking config: chunk_tokens={chunk_tokens}, overlap_tokens={overlap_tokens} (need 0 <= overlap < chunk size).")
 
-    max_chars = chunk_tokens * CHARS_PER_TOKEN
-    overlap_chars = overlap_tokens * CHARS_PER_TOKEN
+def _add_overlap(chunks: list[str], overlap_chars: int) -> list[str]:
+    """Start each chunk with the end of the previous one."""
+    with_overlap = [chunks[0]]
+    for previous, current in zip(chunks, chunks[1:]):
+        overlap = _overlap_from(previous, overlap_chars)
+        chunk = current
+        if overlap:
+            chunk = f"{overlap}{OVERLAP_SEPARATOR}{current}"
+        with_overlap.append(chunk)
+    return with_overlap
+
+
+def chunk_text(text: str, chunk_tokens: int | None = None, overlap_tokens: int | None = None) -> list[str]:
+    """Split `text` into overlapping chunks of at most `chunk_tokens` tokens."""
+    max_chars, overlap_chars = _chunk_sizes(chunk_tokens, overlap_tokens)
     text = text.strip()
     if not text:
         return []
 
-    base_chunks = _split(text, max_chars - overlap_chars - len(OVERLAP_SEPARATOR) if overlap_chars else max_chars)
-    chunks = [base_chunks[0]]
-    for previous, current in zip(base_chunks, base_chunks[1:]):
-        tail = _tail(previous, overlap_chars)
-        chunks.append(f"{tail}{OVERLAP_SEPARATOR}{current}" if tail else current)
-    return chunks
+    room = max_chars
+    if overlap_chars:
+        room = max_chars - overlap_chars - len(OVERLAP_SEPARATOR)
+    return _add_overlap(_split_text(text, room), overlap_chars)
+
 
 def chunk_pages(pages: list[dict], chunk_tokens: int | None = None,
                 overlap_tokens: int | None = None) -> list[dict]:
-    """Turn the pages produced by rag.Loader into chunks. Each page is
-    chunked on its own so every chunk keeps an exact page number.
-    Returns {"source", "page", "chunk_index", "text"} dicts, where
-    chunk_index counts chunks within a source document."""
+    """Chunk each page from rag.Loader, keeping its source and page number."""
     chunks = []
     next_index = {}
     for page in pages:

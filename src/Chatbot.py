@@ -16,6 +16,7 @@ from Memories.TokenLimit import (
     blocked_message,
     estimate_context_tokens,
     format_usage,
+    get_budget,
     is_over_limit,
     parse_bool,
     parse_limit_action,
@@ -25,6 +26,7 @@ from Memories.TokenLimit import (
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
 from Runtime.Parameters import describe_temperature, parse_temperature
 from Commands import Session, handle_command, select_conversation
+from rag.Retriever import rag_message
 
 FALLBACK_SYSTEM_PROMPT = "You are Sensai, a helpful assistant."
 
@@ -151,6 +153,15 @@ def login_flow() -> str:
         return user["user_id"]
 
 
+def add_documents(context: list[dict], user_input: str, ollama_url: str) -> None:
+    """Add the HR documents relevant to `user_input`, within the token limit."""
+    question = {"role": "user", "content": user_input}
+    room = get_budget() - estimate_context_tokens(context + [question])
+    documents = rag_message(user_input, room, ollama_url=ollama_url)
+    if documents:
+        context.append(documents)
+
+
 def chat_turn(session: Session, user_input: str) -> bool:
     """Run one user -> assistant exchange.
     Returns True when the exchange completed and was saved, False when it
@@ -167,6 +178,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
         session.model,
         session.ollama_url,
     )
+    add_documents(context, user_input, session.ollama_url)
     context.append({"role": "user", "content": user_input})
 
     # Token limit: compression had its chance, this is what is left.
