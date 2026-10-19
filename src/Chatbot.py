@@ -23,6 +23,7 @@ from Memories.TokenLimit import (
     warning_message,
 )
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
+from Runtime.Parameters import describe_temperature, parse_temperature
 from Commands import Session, handle_command, select_conversation
 
 FALLBACK_SYSTEM_PROMPT = "You are Sensai, a helpful assistant."
@@ -52,17 +53,23 @@ def _as_count(value) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def call_ollama(base_url: str, model: str, messages: list) -> Reply | None:
+def call_ollama(base_url: str, model: str, messages: list,
+                temperature: float | None = None) -> Reply | None:
     """Send the full message history to Ollama and stream the response.
+    `temperature` None leaves the model's own default.
     Returns the full answer with its token counts, or None if the call failed."""
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True
+    }
+    if temperature is not None:
+        payload["options"] = {"temperature": temperature}
+
     try:
         response = requests.post(
             f"{base_url}/api/chat",
-            json={
-                "model": model,
-                "messages": messages,
-                "stream": True
-            },
+            json=payload,
             stream=True
         )
         response.raise_for_status()
@@ -171,7 +178,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
         print(warning_message(context_tokens))
 
     print("Assistant: ", end="", flush=True)
-    reply = call_ollama(session.ollama_url, session.model, context)
+    reply = call_ollama(session.ollama_url, session.model, context, session.temperature)
 
     if reply is None:
         # Nothing was persisted yet for this turn, so there is nothing
@@ -233,6 +240,13 @@ def main():
              f"compression: {' or '.join(LIMIT_ACTIONS)} "
              f"(overrides .env TOKEN_LIMIT_ACTION)"
     )
+    parser.add_argument(
+        "--temperature",
+        default=os.getenv("TEMPERATURE"),
+        help="Sampling temperature of the answers, 0 (deterministic) to 2 "
+             "(creative); unset = the model's default (overrides .env "
+             "TEMPERATURE). Can be changed at runtime with /temperature"
+    )
     args = parser.parse_args()
 
     user_id = login_flow()
@@ -260,6 +274,10 @@ def main():
     if action_warning:
         print(f"[Warning: {action_warning}]")
 
+    temperature, temperature_error = parse_temperature(args.temperature)
+    if temperature_error:
+        print(f"[Warning: {temperature_error} Using the model default.]")
+
     session = Session(
         user_id=user_id,
         conversation_id=conversation_id,
@@ -270,6 +288,7 @@ def main():
         search_motor="tavily",
         token_limit_action=token_limit_action,
         show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
+        temperature=temperature,
     )
 
     history_count = len(load_history(session.conversation_id))
@@ -277,7 +296,8 @@ def main():
         print(f"[{history_count} previous message(s) in this conversation "
               f"— context will be compressed automatically if needed]")
 
-    print(f"\nChatbot ready (model: {session.model}, persona: {session.persona['name']}). "
+    print(f"\nChatbot ready (model: {session.model}, persona: {session.persona['name']}, "
+          f"temperature: {describe_temperature(session.temperature)}). "
           f"Type /help for the commands, 'exit' to quit.\n")
 
     while True:
