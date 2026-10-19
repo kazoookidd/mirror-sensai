@@ -3,7 +3,7 @@ import json
 import argparse
 import os
 import getpass
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 from Memories.Database import init_db
@@ -27,6 +27,8 @@ from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
 from Runtime.Parameters import describe_temperature, parse_temperature
 from Commands import Session, handle_command, select_conversation
 from rag.Retriever import rag_message
+from Agents.Engine import generate_reply
+from Agents.Setup import build_registry
 
 FALLBACK_SYSTEM_PROMPT = "You are Sensai, a helpful assistant."
 
@@ -38,6 +40,9 @@ class Reply:
     text: str
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    # Tool calls requested by the model (message.tool_calls), as sent by Ollama:
+    # [{"function": {"name": ..., "arguments": {...}}}]. Empty for a plain answer.
+    tool_calls: list = field(default_factory=list)
 
 
 def load_system_prompt(path: str) -> str | None:
@@ -56,35 +61,45 @@ def _as_count(value) -> int | None:
 
 
 def call_ollama(base_url: str, model: str, messages: list,
-                temperature: float | None = None) -> Reply | None:
+                temperature: float | None = None, tools: list | None = None,
+                echo: bool = True, prefix: str = "",
+                on_error=None) -> Reply | None:
     """Send the full message history to Ollama and stream the response.
-    `temperature` None leaves the model's own default.
-    Returns the full answer with its token counts, or None if the call failed."""
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": True
-    }
+    Returns the full answer with its token counts and any tool calls the
+    model requested, or None if the call failed.
+
+    tools:    tool specs (tools.json format) the model may call.
+    echo:     stream the text to stdout (False = silent).
+    prefix:   printed once, just before the first streamed character, so an
+              answer that is empty (a pure tool call) leaves no dangling label.
+    on_error: receives the error message instead of printing it."""
+    report = on_error or print
+    payload = {"model": model, "messages": messages, "stream": True}
     if temperature is not None:
         payload["options"] = {"temperature": temperature}
-
+    if tools:
+        payload["tools"] = tools
     try:
-        response = requests.post(
-            f"{base_url}/api/chat",
-            json=payload,
-            stream=True
-        )
+        response = requests.post(f"{base_url}/api/chat", json=payload, stream=True)
         response.raise_for_status()
     except requests.exceptions.ConnectionError:
-        print("Error: cannot connect to Ollama. Is it running? (ollama serve)")
+        report("Error: cannot connect to Ollama. Is it running? (ollama serve)")
         return None
     except requests.exceptions.HTTPError as e:
-        print(f"Error: model unavailable or bad request ({e})")
+        # Ollama explains the refusal in the body (e.g. "does not support tools").
+        detail = ""
+        try:
+            detail = response.json().get("error", "")
+        except ValueError:
+            pass
+        report(f"Error: model unavailable or bad request ({e}){': ' + detail if detail else ''}")
         return None
 
     full_reply = ""
+    tool_calls = []
     prompt_tokens = None
     completion_tokens = None
+    started = False
     try:
         for line in response.iter_lines():
             if not line:
@@ -92,23 +107,32 @@ def call_ollama(base_url: str, model: str, messages: list,
             chunk = json.loads(line)
 
             if "error" in chunk:
-                print(f"Error from Ollama: {chunk['error']}")
+                report(f"Error from Ollama: {chunk['error']}")
                 return None
 
             content = chunk.get("message", {}).get("content", "")
-            print(content, end="", flush=True)
+            if echo and content:
+                if not started:
+                    print(prefix, end="")
+                    started = True
+                print(content, end="", flush=True)
             full_reply += content
+            # Tool calls arrive in message.tool_calls, possibly across chunks.
+            tool_calls.extend(chunk.get("message", {}).get("tool_calls") or [])
             if chunk.get("done"):
                 # Only the last chunk carries the real token counts.
                 prompt_tokens = _as_count(chunk.get("prompt_eval_count"))
                 completion_tokens = _as_count(chunk.get("eval_count"))
                 break
     except requests.exceptions.ChunkedEncodingError:
-        print("\nError: connection interrupted while streaming.")
+        if started:
+            print()
+        report("Error: connection interrupted while streaming.")
         return None
 
-    print()  # saut de ligne final
-    return Reply(full_reply, prompt_tokens, completion_tokens)
+    if started:
+        print()  # saut de ligne final
+    return Reply(full_reply, prompt_tokens, completion_tokens, tool_calls)
 
 
 def login_flow() -> str:
@@ -162,6 +186,15 @@ def add_documents(context: list[dict], user_input: str, ollama_url: str) -> None
         context.append(documents)
 
 
+def add_documents(context: list[dict], user_input: str, ollama_url: str) -> None:
+    """Add the HR documents relevant to `user_input`, within the token limit."""
+    question = {"role": "user", "content": user_input}
+    room = get_budget() - estimate_context_tokens(context + [question])
+    documents = rag_message(user_input, room, ollama_url=ollama_url)
+    if documents:
+        context.append(documents)
+
+
 def chat_turn(session: Session, user_input: str) -> bool:
     """Run one user -> assistant exchange.
     Returns True when the exchange completed and was saved, False when it
@@ -189,8 +222,10 @@ def chat_turn(session: Session, user_input: str) -> bool:
             return False
         print(warning_message(context_tokens))
 
-    print("Assistant: ", end="", flush=True)
-    reply = call_ollama(session.ollama_url, session.model, context, session.temperature)
+    # generate_reply replaces the direct model call: it streams the answer and
+    # lets the model use its tools when it judges it useful. A message that
+    # needs no tool still costs ONE model call.
+    reply = generate_reply(session, context, user_input)
 
     if reply is None:
         # Nothing was persisted yet for this turn, so there is nothing
@@ -301,7 +336,14 @@ def main():
         token_limit_action=token_limit_action,
         show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
         temperature=temperature,
+        tools_enabled=parse_bool(os.getenv("AGENT_TOOLS"), True),
+        show_tool_activity=parse_bool(os.getenv("AGENT_SHOW_ACTIVITY"), True),
     )
+    if session.tools_enabled:
+        try:
+            session.tools = build_registry(session)
+        except Exception as e:  # missing tools.json, missing dependency...: chat must still work
+            print(f"[Warning: tools unavailable, answering without them ({type(e).__name__}: {e})]")
 
     history_count = len(load_history(session.conversation_id))
     if history_count:
