@@ -1,0 +1,40 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "search_internet",
+            "description": "Search the Internet for information. Use this tool for recent, current, time-sensitive, or externally verifiable information, including news, recent events, current versions, prices, and information that may have changed. Returns a list of search results containing titles, URLs, snippets, and available metadata. The search engine is selected by the application.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "A precise search query describing the information to find."
+                    }
+                },
+                "required": [
+                    "query"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_webpage",
+            "description": "Retrieve and extract the readable text of a specific webpage. Use this tool when the content of a particular URL must be inspected in detail, for example to verify information, understand an article, or obtain details not present in search snippets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The complete HTTP or HTTPS URL of the webpage to read."
+                    }
+                },
+                "required": [
+                    "url"
+                ]
+            }
+        }
+    }
+]
