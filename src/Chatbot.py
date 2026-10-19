@@ -24,7 +24,12 @@ from Memories.TokenLimit import (
     warning_message,
 )
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
-from Runtime.Parameters import describe_temperature, parse_temperature
+from Runtime.Parameters import (
+    describe_temperature,
+    parse_num_predict,
+    parse_seed,
+    parse_temperature,
+)
 from Commands import Session, handle_command, select_conversation
 from rag.Retriever import rag_message
 from Agents.Engine import generate_reply
@@ -63,7 +68,7 @@ def _as_count(value) -> int | None:
 def call_ollama(base_url: str, model: str, messages: list,
                 temperature: float | None = None, tools: list | None = None,
                 echo: bool = True, prefix: str = "",
-                on_error=None) -> Reply | None:
+                on_error=None, options: dict | None = None) -> Reply | None:
     """Send the full message history to Ollama and stream the response.
     Returns the full answer with its token counts and any tool calls the
     model requested, or None if the call failed.
@@ -72,11 +77,16 @@ def call_ollama(base_url: str, model: str, messages: list,
     echo:     stream the text to stdout (False = silent).
     prefix:   printed once, just before the first streamed character, so an
               answer that is empty (a pure tool call) leaves no dangling label.
-    on_error: receives the error message instead of printing it."""
+    on_error: receives the error message instead of printing it.
+    options:  more Ollama options (seed, num_predict...), sent as is.
+              Nothing is sent for what is not set: the model's default applies."""
     report = on_error or print
     payload = {"model": model, "messages": messages, "stream": True}
+    sent_options = dict(options or {})
     if temperature is not None:
-        payload["options"] = {"temperature": temperature}
+        sent_options["temperature"] = temperature
+    if sent_options:
+        payload["options"] = sent_options
     if tools:
         payload["tools"] = tools
     try:
@@ -294,6 +304,18 @@ def main():
              "(creative); unset = the model's default (overrides .env "
              "TEMPERATURE). Can be changed at runtime with /temperature"
     )
+    parser.add_argument(
+        "--seed",
+        default=os.getenv("SEED"),
+        help="Fixed seed: same seed + same question + same settings = same answer; "
+             "unset = not fixed (overrides .env SEED). Runtime: /settings seed"
+    )
+    parser.add_argument(
+        "--num-predict",
+        default=os.getenv("NUM_PREDICT"),
+        help="Maximum length of an answer, in tokens; unset = the model's default "
+             "(overrides .env NUM_PREDICT). Runtime: /settings num-predict"
+    )
     args = parser.parse_args()
 
     user_id = login_flow()
@@ -325,6 +347,12 @@ def main():
     if temperature_error:
         print(f"[Warning: {temperature_error} Using the model default.]")
 
+    seed, seed_error = parse_seed(args.seed)
+    num_predict, num_predict_error = parse_num_predict(args.num_predict)
+    for option_error in (seed_error, num_predict_error):
+        if option_error:
+            print(f"[Warning: {option_error} Using the model default.]")
+
     session = Session(
         user_id=user_id,
         conversation_id=conversation_id,
@@ -336,6 +364,8 @@ def main():
         token_limit_action=token_limit_action,
         show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
         temperature=temperature,
+        seed=seed,
+        num_predict=num_predict,
         tools_enabled=parse_bool(os.getenv("AGENT_TOOLS"), True),
         show_tool_activity=parse_bool(os.getenv("AGENT_SHOW_ACTIVITY"), True),
     )

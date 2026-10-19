@@ -56,13 +56,15 @@ def generate_reply(session, context: list[dict], user_input: str):
 
     def plain() -> Reply | None:
         return call_ollama(session.ollama_url, session.model, context,
-                           temperature=session.temperature, prefix=PREFIX)
+                           temperature=session.temperature, prefix=PREFIX,
+                           options=session.model_options())
 
     if not tools_available(session, user_input):
         return plain()
 
     last_text = {"value": ""}
-    base_llm = ollama_llm(session.ollama_url, session.model, echo=True, prefix=PREFIX)
+    base_llm = ollama_llm(session.ollama_url, session.model, echo=True, prefix=PREFIX,
+                          options=session.model_options())
 
     def llm(messages, tools, temperature):
         reply = base_llm(messages, tools, temperature)

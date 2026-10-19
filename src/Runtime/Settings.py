@@ -17,9 +17,16 @@ from typing import Any, Callable
 
 from Memories.TokenLimit import DEFAULT_ACTION, LIMIT_ACTIONS
 from Runtime.Parameters import (
+    MAX_NUM_PREDICT,
+    MAX_SEED,
     MAX_TEMPERATURE,
+    MIN_NUM_PREDICT,
+    MIN_SEED,
     MIN_TEMPERATURE,
+    describe_option,
     describe_temperature,
+    parse_num_predict,
+    parse_seed,
     parse_temperature,
 )
 
@@ -90,6 +97,23 @@ SETTINGS: tuple[Setting, ...] = (
         parse=parse_switch,
         describe=describe_switch,
         aliases=("show-token-usage",),
+    ),
+    Setting(
+        name="seed",
+        attribute="seed",
+        summary="same seed + same question + same settings = same answer",
+        accepted=f"a whole number, {MIN_SEED} to {MAX_SEED}, or 'default' (not fixed)",
+        parse=parse_seed,
+        describe=describe_option,
+    ),
+    Setting(
+        name="num-predict",
+        attribute="num_predict",
+        summary="maximum length of an answer, in tokens (too low cuts it short)",
+        accepted=f"{MIN_NUM_PREDICT} to {MAX_NUM_PREDICT}, or 'default' for the model's own value",
+        parse=parse_num_predict,
+        describe=describe_option,
+        aliases=("max-tokens", "max-length"),
     ),
 )
 
