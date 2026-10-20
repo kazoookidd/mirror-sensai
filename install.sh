@@ -43,9 +43,19 @@ else
     echo ".env already exists, leaving it untouched."
 fi
 
+# --- Pull the RAG embedding model ---
+EMBED_MODEL="nomic-embed-text"
+if ! command -v ollama &> /dev/null; then
+    echo "Ollama not found: install it, then run 'ollama pull $EMBED_MODEL'."
+elif ollama pull "$EMBED_MODEL"; then
+    echo "Embedding model $EMBED_MODEL ready."
+else
+    echo "Could not pull $EMBED_MODEL (is 'ollama serve' running?). Run 'ollama pull $EMBED_MODEL' later."
+fi
+
 echo ""
 echo "=== Installation complete ==="
 echo "Next steps:"
 echo "  1. Make sure Ollama is running (ollama serve)"
 echo "  2. Pull the model set in .env (e.g. ollama pull llama3)"
-echo "  3. Run ./start.sh"
+echo "  3. Run ./start.sh, then /ingest to index the HR documents"
