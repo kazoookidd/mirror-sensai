@@ -21,7 +21,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Agents import Engine
-from Agents.Router import should_offer_tools
+from Agents.Router import asks_for_search, should_offer_tools
 from Agents.Tooling import Tool, ToolRegistry
 from Chatbot import chat_turn
 from Commands import Session
@@ -71,6 +71,18 @@ class TestRouter(unittest.TestCase):
             self.assertTrue(should_offer_tools(text), text)
 
 
+class TestSearchRequest(unittest.TestCase):
+    def test_explicit_search_requests_are_detected(self):
+        for text in ("fait des recherches", "fait des recherches sur internet", "cherche sur le web le match de demain",
+                     "Can you search for it?", "look it up", "fais une recherche"):
+            self.assertTrue(asks_for_search(text), text)
+
+    def test_ordinary_questions_are_not(self):
+        for text in ("Comment mettre en place le télétravail ?", "où est le siège de la société X ?",
+                     "Quels sont mes congés ?"):
+            self.assertFalse(asks_for_search(text), text)
+
+
 class TestEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -105,7 +117,8 @@ class TestEngine(unittest.TestCase):
         values = dict(user_id="alice", conversation_id=self.conversation_id, model="m", persona_id="default",
                       personas={"default": {"id": "default", "name": "D", "description": "",
                                             "system_prompt": "You are a test assistant."}},
-                      ollama_url=self.url, search_motor="tavily", tools=self.registry())
+                      ollama_url=self.url, search_motor="tavily", tools=self.registry(),
+                      semantic_cache=False)  # the cache has its own tests (Test_cache.py)
         values.update(kw)
         return Session(**values)
 
@@ -154,17 +167,30 @@ class TestEngine(unittest.TestCase):
         self.assertEqual([m["content"] for m in load_history(self.conversation_id)],
                          ["Quelle est la dernière version de Python ?", "Python 3.14."])
 
-    def test_model_options_go_with_every_call_of_a_tool_turn(self):
-        Fake.scripted = [
-            [{"content": "", "tool_calls": [call("search_internet", {"query": "python version"})]}],
-            [{"content": "Python 3.14."}],
-        ]
-        session = self.session(temperature=0.2, seed=42, num_predict=300)
-        self.turn(session, "Quelle est la dernière version de Python ?")
+    def test_an_explicit_search_request_is_nudged_for_that_turn_only(self):
+        Fake.scripted = [[{"content": "ok"}]]
+        self.turn(self.session(), "fait des recherches sur internet")
+        sent = Fake.received[0]["messages"][-1]["content"]
+        self.assertTrue(sent.startswith("fait des recherches sur internet"))
+        self.assertIn("call search_internet now", sent)
+        self.assertEqual([m["content"] for m in load_history(self.conversation_id)][0], "fait des recherches sur internet")
+
+    def test_a_reply_that_repeats_an_old_refusal_is_retried(self):
+        from Memories.Memory import save_message
+        old = "Je suis désolé, mais je ne peux pas faire de recherches en temps réel sur Internet."
+        save_message(self.conversation_id, "user", "q1"); save_message(self.conversation_id, "assistant", old)
+        Fake.scripted = [[{"content": old}], [{"content": "Voici les étapes du télétravail."}]]
+        done, out = self.turn(self.session(), "Comment mettre en place le télétravail ?")
+        self.assertTrue(done)
         self.assertEqual(len(Fake.received), 2)
+        self.assertEqual([m["content"] for m in load_history(self.conversation_id)][-1], "Voici les étapes du télétravail.")
+
+    def test_seed_and_num_predict_reach_every_call_of_the_loop(self):
+        Fake.scripted = [[{"content": "", "tool_calls": [call("search_internet", {"query": "x"})]}],
+                         [{"content": "done"}]]
+        self.turn(self.session(seed=42, num_predict=50, temperature=0.3), "Quelle est la dernière version de Python ?")
         for request in Fake.received:
-            self.assertEqual(request["options"],
-                             {"seed": 42, "num_predict": 300, "temperature": 0.2})
+            self.assertEqual(request["options"], {"seed": 42, "num_predict": 50, "temperature": 0.3})
 
     def test_tool_activity_line_can_be_hidden(self):
         Fake.scripted = [[{"content": "", "tool_calls": [call("search_internet", {"query": "x"})]}],
