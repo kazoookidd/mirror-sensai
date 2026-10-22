@@ -33,6 +33,8 @@ from Runtime.Parameters import (
 from Commands import Session, handle_command, select_conversation
 from rag.Retriever import rag_message
 from Agents.Engine import generate_reply
+from Cache.Chat import check as check_cache, hit_note, remember as remember_answer
+from Cache.Policy import has_substantive_history
 from Agents.Setup import build_registry
 
 FALLBACK_SYSTEM_PROMPT = "You are Sensai, a helpful assistant."
@@ -48,6 +50,8 @@ class Reply:
     # Tool calls requested by the model (message.tool_calls), as sent by Ollama:
     # [{"function": {"name": ..., "arguments": {...}}}]. Empty for a plain answer.
     tool_calls: list = field(default_factory=list)
+    # True when tools were used to produce this answer (their results can go stale)
+    used_tools: bool = False
 
 
 def load_system_prompt(path: str) -> str | None:
@@ -196,15 +200,6 @@ def add_documents(context: list[dict], user_input: str, ollama_url: str) -> None
         context.append(documents)
 
 
-def add_documents(context: list[dict], user_input: str, ollama_url: str) -> None:
-    """Add the HR documents relevant to `user_input`, within the token limit."""
-    question = {"role": "user", "content": user_input}
-    room = get_budget() - estimate_context_tokens(context + [question])
-    documents = rag_message(user_input, room, ollama_url=ollama_url)
-    if documents:
-        context.append(documents)
-
-
 def chat_turn(session: Session, user_input: str) -> bool:
     """Run one user -> assistant exchange.
     Returns True when the exchange completed and was saved, False when it
@@ -215,6 +210,18 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # ACTIVE model, so both can change between two turns without touching
     # the stored history. The current input is appended only in-memory, and
     # only saved to DB once we have a reply.
+    # [A6] Semantic cache: a question that means the same as an earlier one is
+    # answered from the cache, BEFORE anything costly (compression, RAG search,
+    # model call). Only self-contained, non time-sensitive questions qualify.
+    cache_turn = check_cache(session, user_input)
+    if cache_turn.hit is not None:
+        print(f"Assistant: {cache_turn.hit.answer}")
+        print(hit_note(cache_turn.hit))
+        save_message(session.conversation_id, "user", user_input)
+        save_message(session.conversation_id, "assistant", cache_turn.hit.answer)
+        return True
+
+    had_history = has_substantive_history(load_history(session.conversation_id))
     context = build_context(
         session.conversation_id,
         session.persona["system_prompt"],
@@ -244,6 +251,8 @@ def chat_turn(session: Session, user_input: str) -> bool:
 
     save_message(session.conversation_id, "user", user_input)
     save_message(session.conversation_id, "assistant", reply.text)
+    remember_answer(session, cache_turn, user_input, reply.text,
+                    used_tools=reply.used_tools, had_history=had_history)
 
     if session.show_token_usage:
         # Prefer Ollama's own counts; fall back to the estimate if absent.
