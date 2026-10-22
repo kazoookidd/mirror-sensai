@@ -15,7 +15,7 @@ Tools are part of every normal turn; the user never has to ask for them.
 """
 
 from Agents.ReAct import ReActAgent, ollama_llm
-from Agents.Router import should_offer_tools
+from Agents.Router import asks_for_search, should_offer_tools
 from Memories import Compression
 from Memories.TokenLimit import small
 
@@ -33,6 +33,8 @@ def _is_tools_refusal(message: str) -> bool:
 def _print_activity(kind: str, text: str) -> None:
     """Discreet line under the answer so the user sees WHERE it comes from."""
     if kind == "action":
+        print(small(f"  · {text[:110]}"))
+    elif kind == "note":
         print(small(f"  · {text[:110]}"))
     elif kind == "tool_error":
         print(small(f"  · failed: {text[:110]}"))
@@ -71,6 +73,13 @@ def generate_reply(session, context: list[dict], user_input: str):
         last_text["value"] = reply.content
         return reply
 
+    if asks_for_search(user_input):
+        # The user EXPLICITLY asked for a search: say it to the model, for this turn only
+        # (the stored message stays the user's own words).
+        context = [dict(m) for m in context]
+        context[-1]["content"] += ("\n\n[The user asks you to search the web: call "
+                                  "search_internet now, then answer from the results.]")
+
     agent = ReActAgent(
         llm, session.tools, temperature=session.temperature,
         on_event=_print_activity if session.show_tool_activity else None,
@@ -88,4 +97,5 @@ def generate_reply(session, context: list[dict], user_input: str):
 
     if result.answer.strip() != last_text["value"].strip():
         print(f"{PREFIX}{result.answer}")  # answer produced by a fallback, not streamed
-    return Reply(result.answer, result.prompt_tokens, result.completion_tokens)
+    return Reply(result.answer, result.prompt_tokens, result.completion_tokens,
+                 used_tools=bool(result.steps))

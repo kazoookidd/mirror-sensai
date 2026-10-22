@@ -20,7 +20,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from Agents.ReAct import LLMError, ModelReply, ReActAgent, ollama_llm, parse_tool_call
+from Agents.ReAct import LLMError, ModelReply, ReActAgent, ollama_llm, parse_tool_call, repeats_earlier_answer
 from Agents.Setup import build_registry, format_search_results
 from Agents.Tooling import Tool, ToolRegistry, load_tool_specs
 from Commands import Session
@@ -219,6 +219,45 @@ class TestAgent(unittest.TestCase):
         llm = Script(tools_reply(call("search_internet", {"query": "x"}), content="need"), say("ok"))
         ReActAgent(llm, make_registry(), on_event=lambda k, t: events.append(k)).run("q")
         self.assertEqual(events, ["thought", "action", "observation"])
+
+
+
+class TestRepeatGuard(unittest.TestCase):
+    OLD = "Je suis désolé, mais je ne peux pas faire de recherches en temps réel sur Internet."
+
+    def history(self):
+        return [{"role": "system", "content": "sys"}, {"role": "user", "content": "q1"},
+                {"role": "assistant", "content": self.OLD}, {"role": "user", "content": "Comment mettre en place le télétravail ?"}]
+
+    def test_detects_a_word_for_word_repeat_ignoring_spacing_and_case(self):
+        self.assertTrue(repeats_earlier_answer("  " + self.OLD.upper() + "\n", self.history()))
+        self.assertFalse(repeats_earlier_answer("Voici les étapes du télétravail, une par une.", self.history()))
+        self.assertFalse(repeats_earlier_answer("ok", [{"role": "assistant", "content": "ok"}]))  # too short to matter
+
+    def test_a_repeated_old_answer_is_retried_and_the_bad_answer_is_not_kept(self):
+        llm = Script(say(self.OLD), say("Voici les étapes : ..."))
+        events = []
+        r = ReActAgent(llm, make_registry(), on_event=lambda k, t: events.append(k)).run_messages(self.history())
+        self.assertEqual((r.answer, r.status, len(llm.seen)), ("Voici les étapes : ...", "final", 2))
+        retry = llm.seen[1]
+        self.assertEqual(retry[-1]["role"], "user")
+        self.assertIn("Comment mettre en place le télétravail ?", retry[-1]["content"])
+        self.assertEqual([m["content"] for m in retry if m["role"] == "assistant"], [self.OLD])  # only the old one
+        self.assertIn("note", events)
+
+    def test_it_retries_only_once(self):
+        r = ReActAgent(Script(say(self.OLD), say(self.OLD)), make_registry()).run_messages(self.history())
+        self.assertEqual(r.answer, self.OLD)
+
+    def test_guidance_has_the_date_the_language_rule_and_the_search_reminder(self):
+        llm = Script(say("x"))
+        ReActAgent(llm, make_registry()).run("q")
+        system = llm.seen[0][0]["content"]
+        from datetime import date, timedelta
+        self.assertIn(date.today().isoformat(), system)
+        self.assertIn((date.today() + timedelta(days=1)).isoformat(), system)
+        self.assertIn("ignore them", system)
+        self.assertIn("language the user writes in", system)
 
 
 class TestTooling(unittest.TestCase):

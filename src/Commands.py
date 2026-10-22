@@ -35,6 +35,7 @@ from Runtime.Settings import (
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Tools.web_search import print_search_moteur, switch_search_motor
 from rag.Store import DEFAULT_DOCS_DIR, index_directory
+from Cache.Chat import get_cache, invalidate as invalidate_cache
 
 HELP_TEXT = """Available commands:
   /help                         show this help
@@ -54,6 +55,7 @@ HELP_TEXT = """Available commands:
                                 (e.g. /leave I take Nov 3 to 7 for a holiday)
   /leaves                       list the leave requests you have filed
   /ingest [folder]              index HR documents so answers can use them (default: data/docs)
+  /cache [clear]                show the semantic cache, or empty it
   exit                          quit
 
 
@@ -86,6 +88,8 @@ class Session:
     # Print a dimmed line for each tool the agent uses
     show_tool_activity: bool = True
     # More options of the model, None = the model's default (see Runtime/Parameters.py)
+    # [A6] answer questions that mean the same as an earlier one from the cache
+    semantic_cache: bool = True
     seed: int | None = None
     num_predict: int | None = None
 
@@ -341,6 +345,27 @@ def ingest_documents(argument: str) -> None:
         return
     print(f"{stats['indexed']} document(s) indexed ({stats['chunks']} chunks), "
           f"{stats['unchanged']} unchanged, {stats['removed']} removed.")
+    # The cached answers were written from the OLD documents: forget them.
+    removed = invalidate_cache()
+    if removed:
+        print(f"{removed} cached answer(s) forgotten (the documents changed).")
+
+
+def cache_command(session: Session, argument: str) -> None:
+    cache = get_cache(session)
+    if argument.strip().lower() == "clear":
+        print(f"{cache.clear(session.user_id)} cached answer(s) removed.")
+        return
+    stats = cache.stats(session.user_id)
+    state = "on" if session.semantic_cache else "off"
+    print(f"=== Semantic cache ({state}) ===")
+    print(f"  entries: {stats['entries']}   hits so far: {stats['hits']}   scope: {stats['scope']}")
+    print(f"  similarity threshold: {stats['threshold']:g}   expires after: "
+          f"{'never' if not stats['ttl_hours'] else str(int(stats['ttl_hours'])) + ' h'}   "
+          f"embedding model: {stats['embed_model']}")
+    if cache.unavailable_reason:
+        print(f"  unavailable: {cache.unavailable_reason}")
+    print("Turn it on or off with /settings cache on|off, empty it with /cache clear.")
 
 
 def handle_command(session: Session, text: str) -> bool:
@@ -383,6 +408,8 @@ def handle_command(session: Session, text: str) -> bool:
         print_leave_requests(session)
     elif command == "/ingest":
         ingest_documents(argument)
+    elif command == "/cache":
+        cache_command(session, argument)
     else:
         print(f"Unknown command '{command}'. Type /help to see the available commands.")
     return True

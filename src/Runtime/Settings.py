@@ -99,6 +99,15 @@ SETTINGS: tuple[Setting, ...] = (
         aliases=("show-token-usage",),
     ),
     Setting(
+        name="cache",
+        attribute="semantic_cache",
+        summary="answer a question that means the same as an earlier one from the cache (no model call)",
+        accepted="on or off",
+        parse=parse_switch,
+        describe=describe_switch,
+        aliases=("semantic-cache",),
+    ),
+    Setting(
         name="seed",
         attribute="seed",
         summary="same seed + same question + same settings = same answer",
