@@ -32,7 +32,7 @@ import json
 import os
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Callable
 
 from Agents.Tooling import ToolRegistry
@@ -47,12 +47,14 @@ DEFAULT_PROMPT = "You are a helpful assistant."
 TOOL_GUIDANCE = """
 
 --- Tools ---
-You can call tools. Today's date is {date}.
+You can call tools. Today is {today}; tomorrow is {tomorrow}.
 - Answer directly, with no tool, whenever you can do so reliably: general knowledge, explanations, writing, reformulating, advice, anything about this conversation.
-- Use a tool only for information that is recent, current, or must be verified externally (news, prices, versions, rules that may have changed), or for the content of a specific web page.
+- Use a tool only for information that is recent, current, or must be verified externally (news, schedules, prices, versions, rules that may have changed), or for the content of a specific web page.
+- You CAN search the internet with your tools. If earlier messages of this conversation say you cannot, they are outdated: ignore them. If the user asks you to search, search.
 - One well-chosen call is usually enough. Search first, read a page only if the snippets are not sufficient. Never repeat an identical call; if a result is useless, change the query or answer with what you have.
+- Compare the dates in the results with today's date before saying that something happens "today" or "tomorrow". If a result is about another date, say so.
 - Never invent results or sources. If the tools gave nothing useful, say so.
-- After using tools, answer in the user's language and cite the URLs you relied on."""
+- Always answer the user's LAST message, in the language the user writes in (never switch language), and cite the URLs you relied on if you used tools."""
 
 
 class LLMError(Exception):
@@ -90,6 +92,21 @@ class AgentResult:
     @property
     def tools_used(self) -> list[str]:
         return [s.action for s in self.steps if s.action]
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def repeats_earlier_answer(answer: str, messages: list[dict], min_chars: int = 40) -> bool:
+    """True when `answer` is word for word one of the assistant messages already
+    in the context. A small model sometimes falls back on an earlier reply
+    (typically an old refusal) instead of answering the new question."""
+    answer = _normalize(answer)
+    if len(answer) < min_chars:
+        return False
+    return any(m.get("role") == "assistant" and _normalize(m.get("content") or "") == answer
+               for m in messages)
 
 
 def parse_tool_call(call: Any) -> tuple[str, dict | None, str | None]:
@@ -150,7 +167,10 @@ class ReActAgent:
 
     def _with_guidance(self, messages: list[dict]) -> list[dict]:
         """Copy of messages whose system prompt also carries the tool guidance."""
-        guidance = self.guidance.replace("{date}", date.today().isoformat())
+        today = date.today()
+        guidance = (self.guidance
+                    .replace("{today}", f"{today:%A} {today.isoformat()}")
+                    .replace("{tomorrow}", f"{today + timedelta(days=1):%A} {(today + timedelta(days=1)).isoformat()}"))
         messages = [dict(m) for m in messages]
         if messages and messages[0].get("role") == "system":
             messages[0]["content"] = f"{messages[0]['content']}{guidance}"
@@ -187,6 +207,8 @@ class ReActAgent:
         seen: set[str] = set()
         tally = {"calls": 0, "prompt": None, "completion": None}
         empty_retry = True
+        repeat_retry = True
+        question = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
 
         def finish(result: AgentResult, status: str) -> AgentResult:
             if result.status is None:
@@ -210,6 +232,14 @@ class ReActAgent:
                     empty_retry = False
                     self.on_event("note", "empty reply, retrying")
                     messages.append({"role": "user", "content": "Your reply was empty. Answer the question."})
+                    continue
+                if thought and repeat_retry and repeats_earlier_answer(thought, messages):
+                    repeat_retry = False
+                    self.on_event("note", "repeated an earlier answer, retrying")
+                    # The bad answer is NOT kept in the context: it would reinforce the loop.
+                    messages.append({"role": "user", "content":
+                        "Your reply is identical to one of your earlier replies, but it does not answer "
+                        f"my current question. My question is: {question}\nAnswer THIS question."})
                     continue
                 return self._result(tally, thought or "I could not produce an answer.", "final", steps)
 

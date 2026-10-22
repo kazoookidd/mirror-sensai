@@ -26,3 +26,18 @@ def should_offer_tools(text: str) -> bool:
     if not text:
         return False
     return _SMALL_TALK.match(text) is None
+
+
+_SEARCH_REQUEST = re.compile(
+    r"\b(?:fais|fait|faire|faites|effectue[rz]?|lance[rz]?)\s+(?:des\s+|une\s+|la\s+)?recherches?\b"
+    r"|\bcherche[rz]?\b|\brecherche[rz]?\s+(?:sur|les|des|moi)\b"
+    r"|\bsur (?:internet|le web|le net)\b|\bon the (?:web|internet)\b|\bonline\b"
+    r"|\bsearch\b|\blook (?:it )?up\b|\bgoogle\b",
+    re.IGNORECASE,
+)
+
+
+def asks_for_search(text: str) -> bool:
+    """The user explicitly asks to look something up ("fais des recherches",
+    "search the web"). Small models then need a nudge to actually call the tool."""
+    return _SEARCH_REQUEST.search(text) is not None
