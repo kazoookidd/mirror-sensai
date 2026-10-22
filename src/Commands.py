@@ -23,6 +23,7 @@ from Runtime.Parameters import (
     MAX_TEMPERATURE,
     MIN_TEMPERATURE,
     describe_temperature,
+    generation_options,
     parse_temperature,
 )
 from Runtime.Settings import (
@@ -45,7 +46,8 @@ HELP_TEXT = """Available commands:
   /model [name|number]          show the current model, or switch to another one
   /temperature [value|default]  show or set how creative the answers are (0 to 2)
   /settings [name [value]]      list the settings, or show/change one
-                                (e.g. /settings token-limit continue)
+                                (e.g. /settings seed 42, /settings num-predict 300,
+                                /settings token-limit continue)
   /switch_search [name|number]  switch the search motor
   /search                       list the search motors
   /leave <your request>         file a leave request in plain language
@@ -83,10 +85,18 @@ class Session:
     tools: object | None = None
     # Print a dimmed line for each tool the agent uses
     show_tool_activity: bool = True
+    # More options of the model, None = the model's default (see Runtime/Parameters.py)
+    seed: int | None = None
+    num_predict: int | None = None
 
     @property
     def persona(self) -> dict:
         return self.personas[self.persona_id]
+
+    def model_options(self) -> dict:
+        """seed / num_predict to send to Ollama (only those that are set).
+        The temperature travels on its own, like before."""
+        return generation_options(self.seed, self.num_predict)
 
 
 def prompt_new_conversation_title() -> str | None:

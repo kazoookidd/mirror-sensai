@@ -154,6 +154,18 @@ class TestEngine(unittest.TestCase):
         self.assertEqual([m["content"] for m in load_history(self.conversation_id)],
                          ["Quelle est la dernière version de Python ?", "Python 3.14."])
 
+    def test_model_options_go_with_every_call_of_a_tool_turn(self):
+        Fake.scripted = [
+            [{"content": "", "tool_calls": [call("search_internet", {"query": "python version"})]}],
+            [{"content": "Python 3.14."}],
+        ]
+        session = self.session(temperature=0.2, seed=42, num_predict=300)
+        self.turn(session, "Quelle est la dernière version de Python ?")
+        self.assertEqual(len(Fake.received), 2)
+        for request in Fake.received:
+            self.assertEqual(request["options"],
+                             {"seed": 42, "num_predict": 300, "temperature": 0.2})
+
     def test_tool_activity_line_can_be_hidden(self):
         Fake.scripted = [[{"content": "", "tool_calls": [call("search_internet", {"query": "x"})]}],
                          [{"content": "done"}]]

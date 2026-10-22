@@ -25,7 +25,14 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
-from Runtime.Parameters import describe_temperature, parse_temperature
+from Runtime.Parameters import (
+    describe_option,
+    describe_temperature,
+    generation_options,
+    parse_num_predict,
+    parse_seed,
+    parse_temperature,
+)
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
 from Commands import Session, handle_command
 from StructuredOutput.Extractor import StructuredOutputError
@@ -305,17 +312,63 @@ class TestTemperature(RuntimeTestCase):
         self.assertEqual((session.conversation_id, session.model), (1, "llama3:latest"))
 
 
+class TestModelOptions(unittest.TestCase):
+    """seed / num_predict: parsing and what is sent to Ollama."""
+
+    PARSERS = {"seed": parse_seed, "num-predict": parse_num_predict}
+
+    def test_whole_numbers_are_accepted(self):
+        self.assertEqual(parse_seed("42"), (42, None))
+        self.assertEqual(parse_seed(" 0 "), (0, None))
+        self.assertEqual(parse_num_predict("300"), (300, None))
+
+    def test_default_words_and_unset_mean_the_model_default(self):
+        for name, parse in self.PARSERS.items():
+            for value in (None, "", "  ", "default", "AUTO", "reset"):
+                self.assertEqual(parse(value), (None, None), f"{name} {value!r}")
+
+    def test_invalid_values_are_refused_and_never_clamped(self):
+        bad = {
+            "seed": ("abc", "-1", "2.5", "99999999999", "nan", "4,2"),
+            "num-predict": ("abc", "0", "-5", "2.5", "99999999", "inf"),
+        }
+        for name, values in bad.items():
+            for value in values:
+                number, error = self.PARSERS[name](value)
+                self.assertIsNone(number, f"{name} {value}")
+                self.assertIn(value, error, f"{name} {value}")
+
+    def test_bounds_are_inclusive(self):
+        self.assertEqual(parse_num_predict("1"), (1, None))
+        self.assertEqual(parse_seed(str(2**31 - 1)), (2**31 - 1, None))
+
+    def test_only_the_options_that_are_set_are_sent_and_zero_counts_as_set(self):
+        self.assertEqual(generation_options(), {})
+        self.assertEqual(generation_options(seed=0), {"seed": 0})
+        self.assertEqual(generation_options(42, 300), {"seed": 42, "num_predict": 300})
+
+    def test_describe(self):
+        self.assertEqual(describe_option(None), "model default")
+        self.assertEqual(describe_option(0), "0")
+        self.assertEqual(describe_option(300), "300")
+
+    def test_a_session_starts_on_the_model_defaults(self):
+        session = Session(user_id="a", conversation_id=1, model="m", persona_id="p",
+                          personas={}, ollama_url="http://x", search_motor="none")
+        self.assertEqual(session.model_options(), {})
+
+
 class TestSettings(RuntimeTestCase):
     """/settings: change the assistant's settings while it runs."""
 
     def test_lists_every_setting_with_its_current_value(self):
         session = self.make_session(temperature=0.4, token_limit_action="continue",
-                                    show_token_usage=False)
+                                    show_token_usage=False, seed=42)
         handled, output = self.run_command(session, "/settings")
         self.assertTrue(handled)
-        for name in ("temperature", "token-limit", "token-usage"):
+        for name in ("temperature", "token-limit", "token-usage", "seed", "num-predict"):
             self.assertIn(name, output)
-        for value in ("0.4", "continue", "off"):
+        for value in ("0.4", "continue", "off", "42", "model default"):
             self.assertIn(value, output)
 
     def test_set_is_an_alias(self):
@@ -352,6 +405,10 @@ class TestSettings(RuntimeTestCase):
         self.assertFalse(session.show_token_usage)
         self.run_command(session, "/settings temp 1")
         self.assertEqual(session.temperature, 1.0)
+        self.run_command(session, "/settings NUM_PREDICT 200")
+        self.assertEqual(session.num_predict, 200)
+        self.run_command(session, "/settings max-tokens 150")
+        self.assertEqual(session.num_predict, 150)
 
     def test_name_alone_shows_the_value_and_what_it_accepts(self):
         session = self.make_session(token_limit_action="continue")
@@ -378,10 +435,57 @@ class TestSettings(RuntimeTestCase):
         self.assertTrue(handled)
         self.assertIn("unknown setting 'colour'", output)
         self.assertIn("temperature", output)
+        self.assertIn("seed", output)
+        self.assertIn("num-predict", output)
+
+    def test_sets_the_seed_and_zero_is_a_real_value(self):
+        session = self.make_session()
+        _, output = self.run_command(session, "/settings seed 42")
+        self.assertEqual(session.seed, 42)
+        self.assertIn("seed set to 42", output)
+        self.run_command(session, "/settings seed 0")
+        self.assertEqual(session.seed, 0)
+        self.assertEqual(session.model_options(), {"seed": 0})
+
+    def test_sets_num_predict(self):
+        session = self.make_session()
+        _, output = self.run_command(session, "/settings num-predict 300")
+        self.assertEqual(session.num_predict, 300)
+        self.assertIn("num-predict set to 300", output)
+        self.assertEqual(session.model_options(), {"num_predict": 300})
+
+    def test_options_can_go_back_to_the_model_default(self):
+        session = self.make_session(seed=1, num_predict=2)
+        for name in ("seed", "num-predict"):
+            self.run_command(session, f"/settings {name} default")
+        self.assertEqual(session.model_options(), {})
+
+    def test_invalid_seed_and_num_predict_are_refused_and_nothing_changes(self):
+        session = self.make_session(temperature=0.5, seed=1, num_predict=200)
+        for command in ("/settings seed -3", "/settings seed 1.5", "/settings seed lucky",
+                        "/settings num-predict 0", "/settings num-predict 99999999",
+                        "/settings num-predict big",
+                        "/settings temperature hot", "/settings token-limit maybe"):
+            _, output = self.run_command(session, command)
+            self.assertIn("Error", output, command)
+            self.assertIn("unchanged", output, command)
+        self.assertEqual((session.temperature, session.seed, session.num_predict),
+                         (0.5, 1, 200))
+
+    def test_name_alone_shows_the_num_predict_value_and_its_range(self):
+        session = self.make_session(num_predict=300)
+        _, output = self.run_command(session, "/settings num-predict")
+        self.assertIn("300", output)
+        self.assertIn("1 to 32768", output)
+        self.assertEqual(session.num_predict, 300)
+
+    def test_changing_a_setting_keeps_the_rest_of_the_session(self):
+        session = self.make_session()
 
     def test_changing_a_setting_keeps_the_rest_of_the_session(self):
         session = self.make_session()
         self.run_command(session, "/settings token-limit continue")
+        self.run_command(session, "/settings seed 5")
         self.assertEqual((session.conversation_id, session.model, session.persona_id),
                          (1, "llama3:latest", DEFAULT_PERSONA_ID))
 

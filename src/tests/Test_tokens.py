@@ -192,6 +192,34 @@ class TestCallOllama(ServerTestCase):
         self.assertIsNone(reply.prompt_tokens)
         self.assertIsNone(reply.completion_tokens)
 
+    # --- model options: temperature, seed, num_predict ---
+
+    def send(self, **kwargs):
+        with redirect_stdout(io.StringIO()):
+            call_ollama(self.url, "llama3", [{"role": "user", "content": "hi"}], **kwargs)
+        return FakeChatHandler.received[-1]
+
+    def test_nothing_is_sent_when_nothing_is_set(self):
+        self.assertNotIn("options", self.send())
+        self.assertNotIn("options", self.send(options={}))
+
+    def test_temperature_is_sent_and_zero_is_not_mistaken_for_unset(self):
+        self.assertEqual(self.send(temperature=0.2)["options"], {"temperature": 0.2})
+        self.assertEqual(self.send(temperature=0.0)["options"], {"temperature": 0.0})
+
+    def test_options_are_sent_as_given(self):
+        body = self.send(options={"seed": 42, "num_predict": 300})
+        self.assertEqual(body["options"], {"seed": 42, "num_predict": 300})
+
+    def test_options_and_temperature_travel_together(self):
+        body = self.send(temperature=0.3, options={"seed": 7})
+        self.assertEqual(body["options"], {"seed": 7, "temperature": 0.3})
+
+    def test_the_options_dict_of_the_caller_is_left_untouched(self):
+        options = {"seed": 7}
+        self.send(temperature=0.3, options=options)
+        self.assertEqual(options, {"seed": 7})
+
 
 class TestChatTurn(ServerTestCase):
     def setUp(self):
@@ -252,6 +280,16 @@ class TestChatTurn(ServerTestCase):
     def test_chat_turn_sends_no_options_on_the_model_default(self):
         self.run_turn(self.make_session(), "hello")
         self.assertNotIn("options", FakeChatHandler.received[-1])
+
+    def test_the_session_model_options_reach_ollama(self):
+        session = self.make_session(temperature=0.4, seed=42, num_predict=300)
+        self.run_turn(session, "hello")
+        self.assertEqual(FakeChatHandler.received[-1]["options"],
+                         {"seed": 42, "num_predict": 300, "temperature": 0.4})
+
+    def test_a_seed_of_zero_is_sent(self):
+        self.run_turn(self.make_session(seed=0), "hello")
+        self.assertEqual(FakeChatHandler.received[-1]["options"], {"seed": 0})
 
     def test_usage_line_can_be_turned_off(self):
         _, output = self.run_turn(self.make_session(show_token_usage=False), "hello")
