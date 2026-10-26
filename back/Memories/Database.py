@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "sensai.db"
+DB_PATH = Path(__file__).resolve().parents[2] / "storage" / "sensai.db"
 
 
 def get_connection(db_path: str = None) -> sqlite3.Connection:
