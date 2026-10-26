@@ -1,0 +1,55 @@
+.appBar {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--spacing-2);
+  align-items: center;
+  justify-content: space-between;
+  height: calc(var(--appbar-height) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--spacing-3) 0 var(--spacing-4);
+  border-bottom: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
+}
+
+.back {
+  padding-left: var(--spacing-2);
+}
+
+.left,
+.right {
+  display: flex;
+  gap: var(--spacing-1);
+  align-items: center;
+  min-width: 0;
+}
+
+.title {
+  min-width: 0;
+}
+
+.tabBar {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  padding: var(--spacing-1) var(--spacing-4) max(var(--spacing-2), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 52px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}
+
+.tab[aria-current="page"] {
+  color: var(--color-accent-default);
+}

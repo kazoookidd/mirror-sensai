@@ -1,0 +1,79 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+  width: 100%;
+  max-width: calc(var(--page-width) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: var(--spacing-12) var(--gutter);
+}
+
+.wide {
+  --page-width: 1040px;
+}
+
+.medium {
+  --page-width: 880px;
+}
+
+.narrow {
+  --page-width: 720px;
+  padding-top: var(--spacing-10);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-4);
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.titleLine {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+@media (max-width: 767px) {
+  .page,
+  .narrow {
+    gap: var(--spacing-4);
+    padding: var(--spacing-5) var(--gutter) var(--spacing-4);
+  }
+
+  .title {
+    gap: var(--spacing-1);
+  }
+
+  .title :global(.text-display) {
+    font-size: 20px;
+    line-height: 28px;
+    letter-spacing: -0.2px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    line-height: 18px;
+  }
+}
