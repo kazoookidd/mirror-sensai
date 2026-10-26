@@ -1,0 +1,78 @@
+.item {
+  position: relative;
+  height: 76px;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+  touch-action: pan-y;
+}
+
+.actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  height: 100%;
+}
+
+.action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 100%;
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.danger {
+  background: var(--color-error-default);
+  color: var(--color-text-on-accent);
+}
+
+.content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+  padding: 0 var(--spacing-4);
+  background: var(--color-bg-surface);
+  transition: transform var(--transition-fast);
+}
+
+.dragging .content {
+  transition: none;
+}
+
+.title,
+.preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.preview {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.meta {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}
