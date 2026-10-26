@@ -17,7 +17,6 @@ Tools are part of every normal turn; the user never has to ask for them.
 from Agents.ReAct import ReActAgent, ollama_llm
 from Agents.Router import asks_for_search, should_offer_tools
 from Memories import Compression
-from Memories.TokenLimit import small
 
 PREFIX = "Assistant: "
 CHARS_PER_TOKEN = 4  # same estimate as the compression module
@@ -30,14 +29,16 @@ def _is_tools_refusal(message: str) -> bool:
     return "support tools" in message.lower()
 
 
-def _print_activity(kind: str, text: str) -> None:
+def _activity_reporter(out):
     """Discreet line under the answer so the user sees WHERE it comes from."""
-    if kind == "action":
-        print(small(f"  · {text[:110]}"))
-    elif kind == "note":
-        print(small(f"  · {text[:110]}"))
-    elif kind == "tool_error":
-        print(small(f"  · failed: {text[:110]}"))
+    def report(kind: str, text: str) -> None:
+        if kind == "action":
+            out.note(f"  · {text[:110]}")
+        elif kind == "note":
+            out.note(f"  · {text[:110]}")
+        elif kind == "tool_error":
+            out.note(f"  · failed: {text[:110]}")
+    return report
 
 
 def tools_available(session, user_input: str) -> bool:
@@ -52,21 +53,21 @@ def tools_available(session, user_input: str) -> bool:
 
 def generate_reply(session, context: list[dict], user_input: str):
     """context: the system prompt + history + the current user message.
-    Streams the answer to stdout. Returns a Reply, or None if the call failed
-    (the error has been printed)."""
+    Streams the answer to session.out. Returns a Reply, or None if the call
+    failed (the error has been reported)."""
     from Chatbot import Reply, call_ollama  # lazy: Chatbot imports this module
 
     def plain() -> Reply | None:
         return call_ollama(session.ollama_url, session.model, context,
                            temperature=session.temperature, prefix=PREFIX,
-                           options=session.model_options())
+                           options=session.model_options(), out=session.out)
 
     if not tools_available(session, user_input):
         return plain()
 
     last_text = {"value": ""}
     base_llm = ollama_llm(session.ollama_url, session.model, echo=True, prefix=PREFIX,
-                          options=session.model_options())
+                          options=session.model_options(), out=session.out)
 
     def llm(messages, tools, temperature):
         reply = base_llm(messages, tools, temperature)
@@ -82,7 +83,7 @@ def generate_reply(session, context: list[dict], user_input: str):
 
     agent = ReActAgent(
         llm, session.tools, temperature=session.temperature,
-        on_event=_print_activity if session.show_tool_activity else None,
+        on_event=_activity_reporter(session.out) if session.show_tool_activity else None,
         context_char_budget=Compression.DEFAULT_BUDGET * CHARS_PER_TOKEN,
     )
     result = agent.run_messages(context)
@@ -90,12 +91,12 @@ def generate_reply(session, context: list[dict], user_input: str):
     if result.status == "llm_error":
         if not result.steps and _is_tools_refusal(result.answer):
             _NO_TOOLS.add(session.model)
-            print(small(f"[{session.model} cannot use tools: answering without them]"))
+            session.out.note(f"[{session.model} cannot use tools: answering without them]")
             return plain()
-        print(result.answer)
+        session.out.error(result.answer)
         return None
 
     if result.answer.strip() != last_text["value"].strip():
-        print(f"{PREFIX}{result.answer}")  # answer produced by a fallback, not streamed
+        session.out.answer(result.answer)  # answer produced by a fallback, not streamed
     return Reply(result.answer, result.prompt_tokens, result.completion_tokens,
                  used_tools=bool(result.steps))

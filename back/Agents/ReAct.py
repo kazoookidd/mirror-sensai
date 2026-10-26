@@ -288,11 +288,12 @@ class ReActAgent:
 
 
 def ollama_llm(base_url: str, model: str, echo: bool = False, prefix: str = "",
-               options: dict | None = None) -> LLM:
+               options: dict | None = None, out=None) -> LLM:
     """Adapter over the existing streaming call_ollama.
     echo=False: silent. echo=True: the text is written to the screen as it
     arrives (chat mode), `prefix` printed once before the first character.
     `options` (seed, num_predict...) go with every call of the loop.
+    `out` receives the streamed text (default: the terminal).
     A failed call becomes an LLMError carrying the message call_ollama
     reports (nothing is printed: the caller decides what the user sees)."""
     def llm(messages: list[dict], tools: list[dict] | None, temperature: float | None) -> ModelReply:
@@ -302,7 +303,7 @@ def ollama_llm(base_url: str, model: str, echo: bool = False, prefix: str = "",
         with (nullcontext() if echo else redirect_stdout(silent)):
             reply = call_ollama(base_url, model, messages, temperature=temperature, tools=tools,
                                 echo=echo, prefix=prefix, on_error=errors.append,
-                                options=options)
+                                options=options, out=out)
         if reply is None:
             raise LLMError(errors[-1] if errors else "Error: model call failed")
         return ModelReply(reply.text, reply.tool_calls, reply.prompt_tokens, reply.completion_tokens)

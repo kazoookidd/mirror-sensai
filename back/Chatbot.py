@@ -15,12 +15,10 @@ from Memories.TokenLimit import (
     LIMIT_ACTIONS,
     blocked_message,
     estimate_context_tokens,
-    format_usage,
     get_budget,
     is_over_limit,
     parse_bool,
     parse_limit_action,
-    small,
     warning_message,
 )
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
@@ -36,6 +34,7 @@ from Agents.Engine import generate_reply
 from Cache.Chat import check as check_cache, hit_note, remember as remember_answer
 from Cache.Policy import has_substantive_history
 from Agents.Setup import build_registry
+from Runtime.Output import CliOutput
 
 FALLBACK_SYSTEM_PROMPT = "You are Sensai, a helpful assistant."
 
@@ -72,7 +71,7 @@ def _as_count(value) -> int | None:
 def call_ollama(base_url: str, model: str, messages: list,
                 temperature: float | None = None, tools: list | None = None,
                 echo: bool = True, prefix: str = "",
-                on_error=None, options: dict | None = None) -> Reply | None:
+                on_error=None, options: dict | None = None, out=None) -> Reply | None:
     """Send the full message history to Ollama and stream the response.
     Returns the full answer with its token counts and any tool calls the
     model requested, or None if the call failed.
@@ -83,8 +82,10 @@ def call_ollama(base_url: str, model: str, messages: list,
               answer that is empty (a pure tool call) leaves no dangling label.
     on_error: receives the error message instead of printing it.
     options:  more Ollama options (seed, num_predict...), sent as is.
-              Nothing is sent for what is not set: the model's default applies."""
-    report = on_error or print
+              Nothing is sent for what is not set: the model's default applies.
+    out:      where the answer and errors are written (default: the terminal)."""
+    out = out or CliOutput()
+    report = on_error or out.error
     payload = {"model": model, "messages": messages, "stream": True}
     sent_options = dict(options or {})
     if temperature is not None:
@@ -127,9 +128,9 @@ def call_ollama(base_url: str, model: str, messages: list,
             content = chunk.get("message", {}).get("content", "")
             if echo and content:
                 if not started:
-                    print(prefix, end="")
+                    out.stream_start(prefix)
                     started = True
-                print(content, end="", flush=True)
+                out.stream_token(content)
             full_reply += content
             # Tool calls arrive in message.tool_calls, possibly across chunks.
             tool_calls.extend(chunk.get("message", {}).get("tool_calls") or [])
@@ -140,12 +141,12 @@ def call_ollama(base_url: str, model: str, messages: list,
                 break
     except requests.exceptions.ChunkedEncodingError:
         if started:
-            print()
+            out.stream_end()
         report("Error: connection interrupted while streaming.")
         return None
 
     if started:
-        print()  # saut de ligne final
+        out.stream_end()  # saut de ligne final
     return Reply(full_reply, prompt_tokens, completion_tokens, tool_calls)
 
 
@@ -215,8 +216,8 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # model call). Only self-contained, non time-sensitive questions qualify.
     cache_turn = check_cache(session, user_input)
     if cache_turn.hit is not None:
-        print(f"Assistant: {cache_turn.hit.answer}")
-        print(hit_note(cache_turn.hit))
+        session.out.answer(cache_turn.hit.answer)
+        session.out.note(hit_note(cache_turn.hit))
         save_message(session.conversation_id, "user", user_input)
         save_message(session.conversation_id, "assistant", cache_turn.hit.answer)
         return True
@@ -233,11 +234,12 @@ def chat_turn(session: Session, user_input: str) -> bool:
 
     # Token limit: compression had its chance, this is what is left.
     context_tokens = estimate_context_tokens(context)
+    session.out.context(context_tokens, get_budget())
     if is_over_limit(context_tokens):
         if session.token_limit_action == ACTION_BLOCK:
-            print(blocked_message(context_tokens))
+            session.out.error(blocked_message(context_tokens))
             return False
-        print(warning_message(context_tokens))
+        session.out.warning(warning_message(context_tokens))
 
     # generate_reply replaces the direct model call: it streams the answer and
     # lets the model use its tools when it judges it useful. A message that
@@ -246,7 +248,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
 
     if reply is None:
         # Nothing was persisted yet for this turn, so there is nothing
-        # to roll back — just let the user retry.
+        # to roll back, just let the user retry.
         return False
 
     save_message(session.conversation_id, "user", user_input)
@@ -262,15 +264,13 @@ def chat_turn(session: Session, user_input: str) -> bool:
             reply.completion_tokens if reply.completion_tokens is not None
             else estimate_tokens(reply.text)
         )
-        print(small(format_usage(prompt_tokens, completion_tokens, approximate)))
+        session.out.usage(prompt_tokens, completion_tokens, approximate)
     return True
 
 
-def main():
-    load_dotenv()
-    init_db()
-
-    parser = argparse.ArgumentParser(description="Sensai CLI chatbot")
+def build_parser(description: str = "Sensai CLI chatbot") -> argparse.ArgumentParser:
+    """Command-line options shared by the CLI and the web UI (.env gives the defaults)."""
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--model",
         default=os.getenv("MODEL", "llama3"),
@@ -279,7 +279,7 @@ def main():
     )
     parser.add_argument(
         "--system-prompt",
-        default=os.getenv("SYSTEM_PROMPT_PATH", "system_prompt.txt"),
+        default=os.getenv("SYSTEM_PROMPT_PATH", "back/config/system_prompt.txt"),
         help="Path to the system prompt file used by the default persona "
              "(overrides .env SYSTEM_PROMPT_PATH)"
     )
@@ -290,7 +290,7 @@ def main():
     )
     parser.add_argument(
         "--personas-dir",
-        default=os.getenv("PERSONAS_DIR", "personas"),
+        default=os.getenv("PERSONAS_DIR", "back/config/personas"),
         help="Directory containing persona JSON files (overrides .env PERSONAS_DIR)"
     )
     parser.add_argument(
@@ -325,11 +325,12 @@ def main():
         help="Maximum length of an answer, in tokens; unset = the model's default "
              "(overrides .env NUM_PREDICT). Runtime: /settings num-predict"
     )
-    args = parser.parse_args()
+    return parser
 
-    user_id = login_flow()
-    conversation_id = select_conversation(user_id)
 
+def build_session(args, user_id: str, conversation_id: int) -> Session:
+    """The Session of a logged-in user, from the command-line options.
+    Configuration problems are printed as warnings and replaced by defaults."""
     default_prompt = load_system_prompt(args.system_prompt)
     if default_prompt:
         print(f"[System prompt loaded from {args.system_prompt}]")
@@ -383,11 +384,22 @@ def main():
             session.tools = build_registry(session)
         except Exception as e:  # missing tools.json, missing dependency...: chat must still work
             print(f"[Warning: tools unavailable, answering without them ({type(e).__name__}: {e})]")
+    return session
+
+
+def main():
+    load_dotenv()
+    init_db()
+    args = build_parser().parse_args()
+
+    user_id = login_flow()
+    conversation_id = select_conversation(user_id)
+    session = build_session(args, user_id, conversation_id)
 
     history_count = len(load_history(session.conversation_id))
     if history_count:
-        print(f"[{history_count} previous message(s) in this conversation "
-              f"— context will be compressed automatically if needed]")
+        print(f"[{history_count} previous message(s) in this conversation; "
+              f"context will be compressed automatically if needed]")
 
     print(f"\nChatbot ready (model: {session.model}, persona: {session.persona['name']}, "
           f"temperature: {describe_temperature(session.temperature)}). "

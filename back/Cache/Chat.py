@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from Cache import Policy
 from Cache.SemanticCache import (ENABLED, EmbeddingUnavailable, Hit, Lookup,
                                  SemanticCache, fingerprint)
-from Memories.TokenLimit import small
 
 _caches: dict[tuple, SemanticCache] = {}
 
@@ -55,7 +54,7 @@ def check(session, user_input: str) -> CacheTurn:
     try:
         lookup = cache.lookup(session.user_id, fp, user_input)
     except EmbeddingUnavailable as e:
-        print(small(f"[semantic cache off: {e}]"))
+        session.out.note(f"[semantic cache off: {e}]")
         return CacheTurn()
     except sqlite3.Error:
         return CacheTurn()
@@ -63,8 +62,8 @@ def check(session, user_input: str) -> CacheTurn:
 
 
 def hit_note(hit: Hit) -> str:
-    return small(f"  · answered from the cache ({hit.similarity:.0%} similar to an earlier question, "
-                 f"no model call)")
+    return (f"  · answered from the cache ({hit.similarity:.0%} similar to an earlier question, "
+            f"no model call)")
 
 
 def remember(session, turn: CacheTurn, user_input: str, answer: str, *,

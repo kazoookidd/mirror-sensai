@@ -8,7 +8,7 @@ here, so the two files can evolve independently.
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from Memories.Conversations import (
@@ -33,6 +33,7 @@ from Runtime.Settings import (
     find_setting,
 )
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
+from Runtime.Output import CliOutput
 from Tools.web_search import print_search_moteur, switch_search_motor
 from rag.Store import DEFAULT_DOCS_DIR, index_directory
 from Cache.Chat import get_cache, invalidate as invalidate_cache
@@ -92,6 +93,8 @@ class Session:
     semantic_cache: bool = True
     seed: int | None = None
     num_predict: int | None = None
+    # Where the chat turn writes what the user sees (Runtime/Output.py)
+    out: object = field(default_factory=CliOutput)
 
     @property
     def persona(self) -> dict:
