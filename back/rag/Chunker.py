@@ -36,8 +36,7 @@ def _chunk_sizes(chunk_tokens: int | None, overlap_tokens: int | None) -> tuple[
     if overlap_tokens is None:
         overlap_tokens = _read_int_setting("RAG_CHUNK_OVERLAP", DEFAULT_OVERLAP_TOKENS)
     if chunk_tokens <= 0 or not 0 <= overlap_tokens < chunk_tokens:
-        raise ValueError(f"Invalid chunking config: chunk_tokens={chunk_tokens}, "f"overlap_tokens={overlap_tokens} (need 0 <= overlap < chunk size)."
-        )
+        raise ValueError(f"Invalid chunking config: chunk_tokens={chunk_tokens}, "f"overlap_tokens={overlap_tokens} (need 0 <= overlap < chunk size).")
     return chunk_tokens * CHARS_PER_TOKEN, overlap_tokens * CHARS_PER_TOKEN
 
 
