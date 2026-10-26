@@ -1,0 +1,14 @@
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.kept {
+  padding-left: var(--spacing-1);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}
