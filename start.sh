@@ -12,4 +12,13 @@ if [ ! -f ".env" ]; then
 fi
 
 source .venv/bin/activate
-python3 src/Chatbot.py "$@"
+# ./start.sh --web [options]: web interface (X1) instead of the terminal
+if [ "$1" = "--web" ]; then
+    if [ ! -f "front/dist/index.html" ]; then
+        echo "Error: web interface not built. Run ./install.sh, or: cd front && npm install && npm run build"
+        exit 1
+    fi
+    shift
+    exec python3 back/Server.py "$@"
+fi
+python3 back/Chatbot.py "$@"
