@@ -23,6 +23,18 @@ def user_exists(user_id: str) -> bool:
         conn.close()
 
 
+def user_id_for_email(email: str) -> str | None:
+    """Return the user_id of the account registered with this email, or None."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id FROM users WHERE email = ?", (email,)
+        ).fetchone()
+        return row["user_id"] if row else None
+    finally:
+        conn.close()
+
+
 def create_user(user_id: str, email: str, password: str) -> dict:
     """Create a new user account with a salted, hashed password.
     Raises ValueError if the user_id or email is already taken."""
