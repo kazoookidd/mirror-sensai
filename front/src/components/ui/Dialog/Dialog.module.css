@@ -1,0 +1,43 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-6);
+  background: var(--color-overlay);
+  animation: fade-in 150ms ease-out;
+}
+
+.panel {
+  position: relative;
+  display: flex;
+  width: min(1000px, 100%);
+  height: min(760px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-app);
+  box-shadow: var(--shadow-lg);
+  animation: pop-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.close {
+  position: absolute;
+  top: var(--spacing-4);
+  right: var(--spacing-4);
+  z-index: 1;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(8px);
+  }
+}

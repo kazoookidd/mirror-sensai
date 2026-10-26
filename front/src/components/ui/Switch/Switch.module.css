@@ -1,0 +1,38 @@
+.switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-border-default);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast);
+}
+
+.switch:checked {
+  background: var(--color-accent-default);
+}
+
+.switch:checked::before {
+  transform: translateX(14px);
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

@@ -1,0 +1,17 @@
+.brand {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.mark {
+  color: var(--color-brand-mark);
+}
+
+.small {
+  font-size: 12px;
+  line-height: 18px;
+}

@@ -1,0 +1,25 @@
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  align-items: center;
+  max-width: 360px;
+  padding: var(--spacing-8) 0;
+  text-align: center;
+}
+
+.icon {
+  display: grid;
+  place-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-secondary);
+}
+
+.description {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
