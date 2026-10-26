@@ -5,7 +5,7 @@ No real Ollama is needed: a tiny local HTTP server plays the part of
 Ollama's GET /api/tags endpoint.
 
 Usage (from the project root):
-    python src/tests/Test_runtime.py
+    python back/tests/Test_runtime.py
 """
 
 import io
@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest import mock
 
-# src/tests/Test_runtime.py -> one level up is src/, same as Chatbot.py
+# back/tests/Test_runtime.py -> one level up is back/, same as Chatbot.py
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model

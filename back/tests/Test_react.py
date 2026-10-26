@@ -4,7 +4,7 @@ No real model: a scripted LLM plays the model, and the end-to-end tests use a
 fake Ollama server with the real call_ollama.
 
 Usage (from the project root):
-    python src/tests/Test_react.py
+    python back/tests/Test_react.py
 """
 
 import io

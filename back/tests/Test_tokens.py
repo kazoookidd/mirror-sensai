@@ -6,7 +6,7 @@ POST /api/chat and reports token counts the way Ollama does, in the last
 streamed chunk. The database is a temporary file.
 
 Usage (from the project root):
-    python src/tests/Test_tokens.py
+    python back/tests/Test_tokens.py
 """
 
 import io
@@ -20,7 +20,7 @@ from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
-# src/tests/Test_tokens.py -> one level up is src/, same as Chatbot.py
+# back/tests/Test_tokens.py -> one level up is back/, same as Chatbot.py
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Memories import Compression, Database

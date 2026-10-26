@@ -7,8 +7,8 @@ small budget, then asks the model questions requiring those facts and
 scores how many were correctly retained.
 
 Usage:
-    python src/tests/Text_retention.py
-    python src/tests/Text_retention.py --model llama3 --filler-rounds 15
+    python back/tests/Test_retention.py
+    python back/tests/Test_retention.py --model llama3 --filler-rounds 15
 """
 
 import argparse
@@ -16,7 +16,7 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# src/tests/Text_retention.py -> one level up is src/, which is what
+# back/tests/Test_retention.py -> one level up is back/, which is what
 # needs to be on sys.path for "Memories.X" imports to resolve, exactly
 # like Chatbot.py does.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

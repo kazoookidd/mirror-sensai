@@ -142,19 +142,21 @@ class ChatTurnTests(unittest.TestCase):
             user_id="u", conversation_id=1, model="m", persona_id="p",
             personas={"p": {"system_prompt": "Tu es RH."}},
             ollama_url="http://x", search_motor="none", show_token_usage=False,
+            semantic_cache=False,
         )
         self.sent = []
         patches = [
             mock.patch.object(Chatbot, "build_context",
                               return_value=[{"role": "system", "content": "Tu es RH."}]),
-            mock.patch.object(Chatbot, "call_ollama", side_effect=self._fake_ollama),
+            mock.patch.object(Chatbot, "generate_reply", side_effect=self._fake_reply),
             mock.patch.object(Chatbot, "save_message"),
+            mock.patch.object(Chatbot, "load_history", return_value=[]),
         ]
         for patcher in patches:
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def _fake_ollama(self, url, model, context, temperature):
+    def _fake_reply(self, session, context, user_input):
         self.sent = list(context)
         return Chatbot.Reply(text="4 jours.")
 

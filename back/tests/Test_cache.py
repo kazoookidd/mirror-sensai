@@ -7,7 +7,7 @@ bag-of-words vector (questions that share words are close) and /api/chat with
 scripted answers. The database is a temporary file.
 
 Usage (from the project root):
-    python src/tests/Test_cache.py
+    python back/tests/Test_cache.py
 """
 
 import io

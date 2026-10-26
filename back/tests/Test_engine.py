@@ -4,7 +4,7 @@ asks for tools, simple messages stay at ONE model call, and a model without
 tool support still works.
 
 Usage (from the project root):
-    python src/tests/Test_engine.py
+    python back/tests/Test_engine.py
 """
 
 import io
