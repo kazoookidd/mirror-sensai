@@ -1,0 +1,125 @@
+.login {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+.header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--topbar-height);
+  padding: 0 var(--spacing-8);
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-6) var(--gutter);
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  padding: var(--spacing-10);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.eyebrow {
+  color: var(--color-accent-default);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}
+
+.alert {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px var(--spacing-3);
+  border-radius: var(--radius-md);
+  background: var(--color-error-subtle);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.alertIcon {
+  --icon-color: var(--color-error-default);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.remember {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.help {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.help strong {
+  color: var(--color-accent-default);
+  font-weight: 500;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--gutter) var(--spacing-6);
+}
+
+@media (max-width: 767px) {
+  .header {
+    height: calc(var(--appbar-height) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--gutter) 0;
+  }
+
+  .main {
+    align-items: flex-start;
+    padding: var(--spacing-10) var(--gutter) var(--spacing-6);
+  }
+
+  .card {
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .footer {
+    padding-bottom: max(var(--spacing-6), env(safe-area-inset-bottom));
+  }
+}
