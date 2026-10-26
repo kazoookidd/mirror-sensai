@@ -1,0 +1,91 @@
+.text-display {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+  letter-spacing: -0.6px;
+}
+
+.text-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
+}
+
+.text-heading {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  letter-spacing: -0.1px;
+}
+
+.text-body-large {
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.text-body {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.text-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.text-label-small {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.text-small {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.text-caption {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-accent {
+  color: var(--color-accent-default);
+}
+
+.text-error {
+  color: var(--color-error-default);
+}
+
+.brand {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.brand__mark {
+  color: var(--color-brand-mark);
+}
+
+.brand--small {
+  font-size: 12px;
+  line-height: 18px;
+}

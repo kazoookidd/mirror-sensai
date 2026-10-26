@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 *.db
 __init__.py
+front/node_modules/
+front/dist/
+.playwright-mcp/
