@@ -2,8 +2,13 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 
 from dotenv import load_dotenv
+
+# back/StructuredOutput/LeaveRequest.py -> back/ must be on sys.path for "Memories.X" imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from Memories.Database import init_db
 from StructuredOutput.Extractor import StructuredOutputError, extract_leave_request
 from StructuredOutput.Store import save_leave_request
