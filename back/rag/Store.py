@@ -41,6 +41,12 @@ _INSERT_CHUNK = (
     "INSERT INTO chunks (document_id, page, chunk_index, text, embedding) VALUES (?, ?, ?, ?, ?)"
 )
 _DELETE_DOCUMENT = "DELETE FROM documents WHERE id = ?"
+_SELECT_INDEXED = """
+    SELECT d.source, d.file_hash, d.embed_model, d.indexed_at, COUNT(c.id) AS chunks
+    FROM documents d LEFT JOIN chunks c ON c.document_id = d.id
+    WHERE d.folder = ?
+    GROUP BY d.id
+"""
 _SELECT_CHUNKS = """
     SELECT d.source, c.page, c.chunk_index, c.text, c.embedding
     FROM chunks c JOIN documents d ON d.id = c.document_id
@@ -162,6 +168,41 @@ def index_directory(folder: str | Path, db_path: str | None = None) -> dict:
     finally:
         conn.close()
     return stats
+
+
+def _document_status(path: Path, source: str, row, model: str) -> dict:
+    """What the interface shows for one file: size, dates and index status."""
+    if row is None:
+        status = "not_indexed"
+    elif _is_unchanged(row, _file_hash(path, source), model):
+        status = "indexed"
+    else:
+        status = "outdated"
+    stat = path.stat()
+    return {
+        "source": source,
+        "size": stat.st_size,
+        "modified": stat.st_mtime,
+        "indexed_at": row["indexed_at"] if row else None,
+        "chunks": row["chunks"] if row else 0,
+        "status": status,
+    }
+
+
+def document_statuses(folder: str | Path = DEFAULT_DOCS_DIR, db_path: str | None = None) -> list[dict]:
+    """Every file of `folder` with its status: indexed, outdated or not_indexed."""
+    folder = Path(folder).resolve()
+    if not folder.is_dir():
+        return []
+    init_rag_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        known = {row["source"]: row for row in conn.execute(_SELECT_INDEXED, (str(folder),))}
+    finally:
+        conn.close()
+    model = embed_model()
+    return [_document_status(path, source, known.get(source), model)
+            for path, source in list_documents(folder)]
 
 
 def _to_matrix(rows: list) -> np.ndarray:
