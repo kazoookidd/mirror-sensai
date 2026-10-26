@@ -1,4 +1,4 @@
-# User Stories — Personas et changement de modèle
+# User Stories : Personas et changement de modèle
 
 ## [A5] Persona
 

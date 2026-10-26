@@ -1,4 +1,4 @@
-# User Stories — Options du modèle : seed et longueur de réponse
+# User Stories : Options du modèle (seed et longueur de réponse)
 
 ## Seed : des réponses reproductibles
 

@@ -1,4 +1,4 @@
-# User Stories — Température du modèle
+# User Stories : Température du modèle
 
 ## Réglage de la température
 

@@ -1,4 +1,4 @@
-# User Stories — Cache sémantique (A6)
+# User Stories : Cache sémantique (A6)
 
 **US-A6-01**
 En tant qu'employé, je veux obtenir immédiatement la réponse à une question que

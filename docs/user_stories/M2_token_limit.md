@@ -1,6 +1,6 @@
-# User Stories — Limite de tokens et affichage de l'usage
+# User Stories : Limite de tokens et affichage de l'usage
 
-## [M2 — extension] Limite de tokens
+## [M2, extension] Limite de tokens
 
 **US-TK-01** En tant qu'utilisateur, je veux que l'assistant refuse d'envoyer un message quand le contexte dépasse la limite de tokens, même après compression, afin d'éviter que le modèle tronque silencieusement le début de la conversation et me réponde à côté.
 

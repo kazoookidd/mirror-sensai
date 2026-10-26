@@ -1,4 +1,4 @@
-# User Stories — Boucle de raisonnement ReAct (A1)
+# User Stories : Boucle de raisonnement ReAct (A1)
 
 **US-A1-01**
 En tant qu'employé RH, je veux que l'assistant cherche lui-même une information
