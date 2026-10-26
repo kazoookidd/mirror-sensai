@@ -1,4 +1,4 @@
-# Sensai: local HR assistant (CLI)
+# Sensai: local HR assistant (CLI and web)
 
 A local AI assistant connected to [Ollama](https://ollama.com), built without any LLM framework
 (no LangChain, LlamaIndex, etc.). All calls go directly through the Ollama HTTP API. The use case
@@ -21,6 +21,8 @@ is an HR assistant, centred on employee onboarding.
   no model call
 - **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
 - **Structured output** ([T5]): `/leave` turns a plain-language request into a validated leave request
+- **Web interface** ([X1]): the same assistant in the browser, streaming answers, live context gauge,
+  model switching, settings, history; phone, tablet and desktop, light and dark themes
 - **Configurable via `.env`**, with command-line overrides
 - **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
 
@@ -30,6 +32,7 @@ How it all works, module by module: [docs/Sensai_overview.md](docs/Sensai_overvi
 
 - Python 3.10 or higher
 - [Ollama](https://ollama.com) installed and running locally
+- Node.js 18 or higher, only to build the web interface
 - A chat model, and for the RAG and the cache an embedding model:
 
 ```bash
@@ -53,7 +56,33 @@ cd sensai
 1. Check your Python version
 2. Create a virtual environment (`.venv`)
 3. Install dependencies from `requirements.txt`
-4. Create a `.env` file from `.env.example` (if it doesn't already exist)
+4. Build the web interface (`front/dist`), if Node.js is installed
+5. Create a `.env` file from `.env.example` (if it doesn't already exist)
+6. Pull the embedding model `nomic-embed-text`, if Ollama is installed
+
+With Docker, nothing has to be installed except Docker itself: see [Quick start](#quick-start).
+
+## Quick start
+
+| How | Command | Open |
+| --- | --- | --- |
+| Terminal (CLI) | `ollama serve`, then `./start.sh` | the terminal |
+| Web, local | `ollama serve`, then `./start.sh --web` | http://127.0.0.1:8000 |
+| Web, Docker | `docker compose up --build` | http://localhost:3000 |
+
+Accounts are created in the CLI: log in with a new user id and it asks for an email and a password.
+The web interface then accepts that user id or that email.
+
+With Docker, Ollama runs in its own container and the first start downloads `qwen2.5:3b` and
+`nomic-embed-text` (set `MODEL` in `.env` to use another model). The data lives in Docker volumes, apart
+from the local `storage/sensai.db`, so create the account inside the container:
+
+```bash
+docker compose up --build -d                 # front on :3000, API on :8080
+docker compose exec back python back/Chatbot.py   # log in once to create the account, then type exit
+docker compose logs -f back                  # server logs
+docker compose down                          # stop (add -v to also delete the volumes)
+```
 
 ## Configuration
 
@@ -62,7 +91,7 @@ Edit `.env`. Every variable has a default in the code, so a short file is enough
 ```env
 MODEL=llama3.1
 OLLAMA_BASE_URL=http://localhost:11434
-SYSTEM_PROMPT_PATH=system_prompt.txt
+SYSTEM_PROMPT_PATH=back/config/system_prompt.txt
 ```
 
 | Group | Variables |
@@ -76,8 +105,8 @@ SYSTEM_PROMPT_PATH=system_prompt.txt
 | Cache ([A6]) | `CACHE_ENABLED`, `CACHE_EMBED_MODEL`, `CACHE_SIMILARITY` (0.92), `CACHE_TTL_HOURS` (168), `CACHE_MAX_ENTRIES` (500), `CACHE_SCOPE` (`user`), `CACHE_CONTEXT_FREE_ONLY` |
 | RAG ([R1]) | see the RAG section below |
 
-The system prompt is loaded from a plain text file (`system_prompt.txt` by default). Personas are one
-JSON file each in `personas/` (`name`, `description`, `system_prompt`).
+The system prompt is loaded from a plain text file (`back/config/system_prompt.txt` by default). Personas
+are one JSON file each in `back/config/personas/` (`name`, `description`, `system_prompt`).
 
 ## Usage
 
@@ -141,11 +170,11 @@ You: Qui est le PDG de Renault ?
 Assistant: D'après les résultats trouvés (https://...), ...
 ```
 
-- Tools are declared in `src/Tools/tools.json` (`search_internet`, `read_webpage`).
+- Tools are declared in `back/Tools/tools.json` (`search_internet`, `read_webpage`).
 - Greetings and thanks are answered without offering tools.
 - Guards for small models: a limit of steps, an identical call is not run twice, a bad tool call is
   reported to the model instead of crashing, and an answer that repeats an old one is rejected.
-- Adding a tool: one entry in `tools.json` + one provider in `src/Agents/Setup.py`.
+- Adding a tool: one entry in `tools.json` + one provider in `back/Agents/Setup.py`.
 
 ## Semantic cache ([A6])
 
@@ -167,6 +196,64 @@ It is cautious on purpose, because a wrong cached answer is worse than a slow on
 
 It needs the embedding model (`ollama pull nomic-embed-text`). If it is missing, one note is shown and the
 cache is turned off for the session.
+
+## Web interface ([X1])
+
+```bash
+./start.sh --web          # then open http://127.0.0.1:8000
+./start.sh --web --port 8080 --model qwen2.5:3b
+```
+
+The interface is built by `install.sh` (it needs Node.js 18+). To build it by hand, or to work on it with
+hot reload:
+
+```bash
+cd front && npm install && npm run build   # front/dist, served by ./start.sh --web
+npm run dev                                # http://localhost:5173, API calls sent to 127.0.0.1:8000
+```
+
+The web interface is a front end over the same backend as the CLI: the server (`back/Server.py`,
+`back/Web/`) calls `chat_turn`, the accounts, the conversations and the settings exactly as the terminal
+does. Only the output differs: the chat turn writes to `session.out` (`back/Runtime/Output.py`), which is
+the terminal for the CLI and a stream of Server-Sent Events for the browser.
+
+- Log in with an account created in the CLI (its email or its user id).
+- Answers stream word by word; the gauge under the composer shows the context used against
+  `CONTEXT_TOKEN_BUDGET`.
+- Model, temperature and answer length are changed live, with the same checks as `/model` and `/settings`.
+- History: search, sort, rename, delete. Documents: the files of `data/docs` and whether they are indexed.
+- Typing `/` in the composer lists the slash commands with what they do; they run on the same code as
+  the CLI (`POST /api/command`), and the output is shown in the chat without being saved.
+- Desktop: a left sidebar (sections, recent chats, model, Ollama status). Clicking the account opens a
+  menu (Profile, Settings, Log out); Profile and Settings open in a tabbed window over the current page.
+  Phones and tablets: a tab bar, with a swipe between Chat, Documents and History, and Settings and
+  Profile as full pages.
+- Light, dark or system theme.
+- The server listens on `127.0.0.1` only (`WEB_HOST`, `WEB_PORT` in `.env`).
+
+Controls marked `[TEST]` are designed but not connected yet: importing documents, querying a selection,
+sources under the answers, stop and regenerate, attaching a file, the documents toggle, the profile page,
+and the model used by each past conversation.
+
+The front end (`front/`) is React 18 with Vite, in JavaScript (JSX). Each component has its CSS Module
+next to it; only the design tokens, fonts and a few utilities are global (`src/styles/`):
+
+```
+front/src/
+├── main.jsx, App.jsx    # entry point, routes (#/chat, #/documents, #/history, #/settings, #/profile), error screen
+├── context/             # AppContext: user, Ollama status, models, context gauge, recent chats
+├── lib/                 # shared helpers: HTTP, Server-Sent Events, formats, theme, safe Markdown rendering
+├── components/          # shared components: ui/ (Button, Field, Dialog...) and feedback/ (EmptyState...)
+├── layout/              # AppShell, left sidebar, mobile app bar and tab bar, Page, slide transitions
+└── features/            # one folder per domain, with its pages, components and API calls:
+                         #   auth, chat, ollama, history, documents, settings, profile, account, errors
+```
+
+Front tests (Vitest, no server or Ollama needed) sit next to the file they test:
+
+```bash
+cd front && npm test
+```
 
 ## RAG: answers from your HR documents
 
@@ -208,11 +295,11 @@ A question unrelated to the documents ("Quelle est la recette de la pizza ?") ge
 
 | Step     | File                    | What it does                                                                                                           |
 | -------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Load     | `src/rag/Loader.py`     | reads .txt / .md / .pdf files, keeps PDF page numbers                                                                  |
-| Chunk    | `src/rag/Chunker.py`    | splits text into ~500-token chunks with a 50-token overlap, at paragraph, sentence, line then word boundaries          |
-| Embed    | `src/rag/Embeddings.py` | turns each chunk into a vector with Ollama`/api/embed` (`nomic-embed-text`)                                            |
-| Store    | `src/rag/Store.py`      | saves chunks and vectors in SQLite, re-embeds only new or modified files                                               |
-| Retrieve | `src/rag/Retriever.py`  | embeds the question, ranks chunks by cosine similarity, keeps the best ones above a threshold, within the token budget |
+| Load     | `back/rag/Loader.py`     | reads .txt / .md / .pdf files, keeps PDF page numbers                                                                  |
+| Chunk    | `back/rag/Chunker.py`    | splits text into ~500-token chunks with a 50-token overlap, at paragraph, sentence, line then word boundaries          |
+| Embed    | `back/rag/Embeddings.py` | turns each chunk into a vector with Ollama`/api/embed` (`nomic-embed-text`)                                            |
+| Store    | `back/rag/Store.py`      | saves chunks and vectors in SQLite, re-embeds only new or modified files                                               |
+| Retrieve | `back/rag/Retriever.py`  | embeds the question, ranks chunks by cosine similarity, keeps the best ones above a threshold, within the token budget |
 
 ### Settings (`.env`)
 
@@ -238,26 +325,30 @@ Changing `RAG_EMBED_MODEL` or the chunk settings requires running `/ingest` agai
 
 ```
 sensai/
-├── src/
+├── back/
 │   ├── Chatbot.py            # startup, login, Ollama call, chat loop
+│   ├── Server.py             # web interface entry point (./start.sh --web)
+│   ├── Web/                  # FastAPI app, sessions, SSE output, one route file per domain
 │   ├── Commands.py           # Session state and the slash commands
-│   ├── leave_request.py      # structured leave request from the command line
 │   ├── Memories/             # SQLite: users, conversations, history, compression, token limit
 │   ├── Runtime/              # personas, models, settings and parameters
 │   ├── Agents/               # ReAct loop, tool registry, router, engine, tool providers
 │   ├── Tools/                # tools.json, web search, page reader
 │   ├── Cache/                # semantic cache: storage, policy, chat glue
 │   ├── rag/                  # loader, chunker, embeddings, store, retriever
-│   ├── StructuredOutput/     # leave request extraction and storage
-│   └── tests/                # Test_*.py (no real Ollama needed)
-├── personas/                 # one JSON file per persona
+│   ├── StructuredOutput/     # leave request extraction, storage, LeaveRequest.py script
+│   ├── config/               # system_prompt.txt and personas/ (one JSON file per persona)
+│   ├── tests/                # Test_*.py (no real Ollama needed)
+│   └── Dockerfile            # image of the API server (docker compose)
+├── front/                    # web interface: React + Vite (src/), icons and fonts (public/), Dockerfile + nginx.conf
 ├── data/docs/                # HR documents for the RAG
-├── docs/                     # user stories and docs/Sensai_overview.md
-├── system_prompt.txt         # default system prompt
+├── storage/                  # sensai.db (accounts, conversations, RAG index, cache), not in git
+├── docs/                     # user stories (docs/user_stories/) and the HR scenario
 ├── .env.example              # example configuration (copy to .env)
 ├── requirements.txt          # Python dependencies
-├── install.sh                # sets up venv + dependencies + .env
-├── start.sh                  # activates venv and runs the chatbot
+├── install.sh                # sets up venv + dependencies + web build + .env
+├── start.sh                  # activates venv and runs the chatbot (--web: web interface)
+├── docker-compose.yml        # front + API + Ollama in containers (http://localhost:3000)
 └── README.md
 ```
 
@@ -267,11 +358,8 @@ No real Ollama is needed: a small local server plays the part of `/api/chat` and
 database is a temporary file. From the project root:
 
 ```bash
-python src/tests/Test_runtime.py
-python src/tests/Test_tokens.py
-python src/tests/Test_react.py
-python src/tests/Test_engine.py
-python src/tests/Test_cache.py
+source .venv/bin/activate
+python -m unittest discover -s back/tests -p "Test_*.py"
 ```
 
 ## Error handling
@@ -296,4 +384,4 @@ python src/tests/Test_cache.py
 
 ## Roadmap
 
-Planned or open: guardrails, a web interface ([X1]), a persistent user profile, more tools for the agent.
+Planned or open: guardrails, a persistent user profile, more tools for the agent, and the `[TEST]` controls of the web interface.
