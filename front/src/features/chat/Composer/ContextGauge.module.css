@@ -1,0 +1,41 @@
+.gauge {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--spacing-2);
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--spacing-2);
+}
+
+.track {
+  position: relative;
+  width: 36px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-surface-2);
+}
+
+.used {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--color-accent-default);
+}
+
+.high .used {
+  background: var(--color-error-default);
+}
+
+.label {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .gauge {
+    padding: 0 var(--spacing-1);
+  }
+}

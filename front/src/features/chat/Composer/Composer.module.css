@@ -1,0 +1,77 @@
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  width: 100%;
+  padding: var(--spacing-4) var(--spacing-4) var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-composer);
+  transition: border-color var(--transition-fast);
+}
+
+.typing {
+  border-color: var(--color-accent-default);
+}
+
+.disabled {
+  background: var(--color-bg-surface-2);
+}
+
+.input {
+  width: 100%;
+  max-height: 200px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 24px;
+  resize: none;
+}
+
+.input::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.footer {
+  display: flex;
+  gap: var(--spacing-1);
+  align-items: center;
+}
+
+.tools {
+  display: flex;
+  flex: 1;
+  gap: var(--spacing-1);
+  align-items: center;
+  min-width: 0;
+}
+
+.disabled .tools,
+.disabled .footer > :not(.tools):not(:last-child) {
+  opacity: 0.45;
+}
+
+.knowledge {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--spacing-3) 0 var(--spacing-2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.knowledge[aria-pressed="true"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-default);
+}

@@ -1,0 +1,82 @@
+:root {
+  color-scheme: light;
+
+  --color-bg-app: #f2f3ee;
+  --color-bg-surface: #fbfbf7;
+  --color-bg-surface-2: #e8eae2;
+  --color-border-default: #d9ddd2;
+  --color-text-primary: #161b17;
+  --color-text-secondary: #646b63;
+  --color-text-on-accent: #ffffff;
+  --color-accent-default: #7a2e5a;
+  --color-accent-hover: #64244a;
+  --color-accent-subtle: #f1e4eb;
+  --color-success-default: #2f7a4f;
+  --color-success-subtle: #e1efe5;
+  --color-error-default: #b3332e;
+  --color-error-subtle: #f7e2e0;
+  --color-brand-mark: #7a2e5a;
+
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(24, 28, 37, 0.05);
+  --shadow-md: 0 1px 2px rgba(24, 28, 37, 0.04), 0 4px 12px rgba(24, 28, 37, 0.06);
+  --shadow-lg: 0 2px 4px rgba(24, 28, 37, 0.04), 0 12px 32px rgba(24, 28, 37, 0.08);
+  --shadow-composer: 0 4px 6px rgba(24, 28, 37, 0.06), 0 1px 1px rgba(24, 28, 37, 0.04);
+  --color-overlay: rgba(24, 28, 37, 0.4);
+  --ring-accent: 0 0 0 3px color-mix(in srgb, var(--color-accent-default) 16%, transparent);
+  --ring-error: 0 0 0 3px color-mix(in srgb, var(--color-error-default) 14%, transparent);
+
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Geist", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --check: url("/assets/icons/check-12.svg");
+  --chevron: url("/assets/icons/chevron-down-16.svg");
+
+  --transition-fast: 150ms ease;
+  --topbar-height: 64px;
+  --appbar-height: 56px;
+  --gutter: var(--spacing-6);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg-app: #0f1311;
+  --color-bg-surface: #161b18;
+  --color-bg-surface-2: #1f2521;
+  --color-border-default: #2a312c;
+  --color-text-primary: #ecefe8;
+  --color-text-secondary: #9aa297;
+  --color-text-on-accent: #1a0e15;
+  --color-accent-default: #d98bb5;
+  --color-accent-hover: #e6a6c8;
+  --color-accent-subtle: #33202b;
+  --color-success-default: #6fbf8e;
+  --color-success-subtle: #18291f;
+  --color-error-default: #ec7a73;
+  --color-error-subtle: #351c1b;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --gutter: var(--spacing-4);
+  }
+}

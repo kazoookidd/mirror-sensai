@@ -1,0 +1,55 @@
+.name {
+  display: flex;
+  flex: 1;
+  gap: var(--spacing-3);
+  align-items: center;
+  min-width: 0;
+}
+
+.icon {
+  display: grid;
+  flex-shrink: 0;
+  place-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-secondary);
+}
+
+.icon[data-size="18"] {
+  width: 36px;
+  height: 36px;
+}
+
+:global([data-selected="true"]) .icon {
+  background: var(--color-bg-surface);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.title,
+.meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.meta {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}

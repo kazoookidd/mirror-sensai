@@ -1,0 +1,18 @@
+.status {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--spacing-2);
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--spacing-2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.offline {
+  color: var(--color-error-default);
+}

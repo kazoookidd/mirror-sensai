@@ -34,6 +34,14 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 deactivate
 
+# --- Build the web interface (X1, ./start.sh --web) ---
+if command -v npm &> /dev/null; then
+    echo "Building the web interface (front/)..."
+    (cd front && npm install --no-audit --no-fund --silent && npm run build --silent)
+else
+    echo "npm not found: install Node.js 18+ for the web interface, then run: cd front && npm install && npm run build"
+fi
+
 # --- Set up .env ---
 if [ ! -f ".env" ]; then
     echo "Creating .env from .env.example..."

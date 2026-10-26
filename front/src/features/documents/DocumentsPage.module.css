@@ -1,0 +1,23 @@
+.listHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2) var(--spacing-4);
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--spacing-2);
+}
+
+.listTitle {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+.info {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}

@@ -1,22 +1,35 @@
-# Sensai: CLI Chatbot (MVP)
+# Sensai: local HR assistant
 
-A minimal local AI assistant connected to [Ollama](https://ollama.com), built without any LLM
-framework (no LangChain, LlamaIndex, etc.). All calls go directly through the Ollama HTTP API.
+Sensai is an internal HR assistant that runs entirely on your machine with
+[Ollama](https://ollama.com). Employees ask about their rights (leave, remote work, salary
+agreements) and get answers taken from the company's own HR documents.
 
-## Features (current MVP)
+It is built without any LLM framework (no LangChain, LlamaIndex, etc.): every model call goes
+directly through the Ollama HTTP API. The use case is described in
+[`docs/Scenario.md`](Scenario.md).
 
-- Functional CLI chatbot connected to a local Ollama model
-- **Streaming responses**: output is rendered progressively, not as a single block
-- **In-session conversation history**: prior turns are sent as context on every request
-- **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
-- **Configurable via `.env`**: model, Ollama URL and system prompt path, no code changes needed
-- **CLI overrides**: any `.env` value can be overridden with a command-line flag
-- **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
+## Features
+
+| Code | Feature | How to use it |
+|---|---|---|
+| B1 | CLI chatbot with streaming answers and clean error handling | `./start.sh` |
+| M1 | Accounts, persistent history, several conversations per user | login at startup, `/new`, `/conversations` |
+| M2 | Context compression and token limit, token usage under each answer | automatic, `/settings` |
+| R1 | RAG: answers based on your HR documents | `/ingest`, then ask a question |
+| A5 | HR personas, model switching at runtime | `/personas`, `/persona`, `/models`, `/model` |
+| A1 + T3 | ReAct agent: the model searches the web when it needs to | automatic (`AGENT_TOOLS=true`) |
+| T5 | Leave request written in plain language, saved as validated JSON | `/leave`, `/leaves` |
+| | Temperature setting | `/temperature` |
+| X1 | Web interface: streaming chat, context gauge, model and settings, history, documents | `./start.sh --web` |
+
+User stories for each feature are in [`docs/user_stories/`](user_stories/).
 
 ## Requirements
 
 - Python 3.10 or higher
-- [Ollama](https://ollama.com) installed and running locally
+- [Ollama](https://ollama.com) installed and running (`ollama serve`)
+- A chat model with tool support, e.g. `ollama pull qwen2.5:3b`
+- For web search only: an API key for Brave, Tavily or Exa
 
 ## Installation
 
@@ -26,66 +39,69 @@ cd sensai
 ./install.sh
 ```
 
-`install.sh` will:
-1. Check your Python version
-2. Create a virtual environment (`.venv`)
-3. Install dependencies from `requirements.txt`
-4. Create a `.env` file from `.env.example` (if it doesn't already exist)
+`install.sh` checks your Python version, creates a virtual environment (`.venv`), installs
+`requirements.txt`, builds the web interface (if Node.js is installed), creates `.env` from
+`.env.example` and pulls the embedding model `nomic-embed-text` used by the RAG.
 
 ## Configuration
 
-Edit `.env` to set your model and options:
+Everything is set in `.env` (see `.env.example` for every option). The main ones:
 
-```env
-MODEL=llama3
-OLLAMA_BASE_URL=http://localhost:11434
-SYSTEM_PROMPT_PATH=system_prompt.txt
-```
+| Variable | Default | Meaning |
+|---|---|---|
+| `MODEL` | `llama3` | chat model, it must be pulled in Ollama first |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server |
+| `TEMPERATURE` | empty (model default) | 0 (precise) to 2 (creative) |
+| `CONTEXT_TOKEN_BUDGET` | `4000` | token budget of the context |
+| `TOKEN_LIMIT_ACTION` | `block` | `block` or `continue` when the context is over the budget |
+| `AGENT_TOOLS` | `true` | let the model use its tools (web search) |
+| `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` | | keys of the search engines |
 
-Make sure the model is pulled before running:
+Most of them can also be given at launch, for example:
 
 ```bash
-ollama pull llama3
+./start.sh --model qwen2.5:3b --persona hr_onboarding --temperature 0.2
 ```
 
-The system prompt is loaded from a plain text file (`system_prompt.txt` by default). Edit that
-file to change the assistant's behavior without touching any code.
+Run `./start.sh --help` to see every option.
 
 ## Usage
 
-Start Ollama in the background if it isn't already running:
-
 ```bash
-ollama serve
-```
-
-Then launch the chatbot:
-
-```bash
+ollama serve          # in another terminal, if Ollama is not running
 ./start.sh
 ```
 
-You will be dropped into an interactive session:
+At startup, log in (an account is created the first time), then pick a conversation or start
+a new one.
 
 ```
-[System prompt loaded from system_prompt.txt]
-Chatbot ready (model: llama3). Type 'exit' to quit.
-
-You: Hello, who are you?
-Assistant: I'm Sensai, a helpful assistant...
+You: /ingest
+8 document(s) indexed (69 chunks), 0 unchanged, 0 removed.
+You: Combien de jours de congé pour un mariage ?
+Assistant: Le salarié peut bénéficier d'un congé de 4 jours pour un mariage.
 You: exit
 Goodbye.
 ```
 
-### Overriding config at launch
+### Commands
 
-Any `.env` value can be overridden without editing files:
+| Command | What it does |
+|---|---|
+| `/help` | list the commands |
+| `/new`, `/conversations` | start a new conversation, or switch to another one |
+| `/personas`, `/persona [id]` | list the personas, or switch to one |
+| `/models`, `/model [name]` | list the installed models, or switch to one |
+| `/temperature [value]` | show or set the temperature |
+| `/settings [name [value]]` | show or change a setting |
+| `/search`, `/switch_search [name]` | list the search engines, or switch to one |
+| `/leave <request>`, `/leaves` | file a leave request in plain language, or list yours |
+| `/ingest [folder]` | index HR documents for the RAG (default: `data/docs`) |
+| `exit` | quit |
 
-```bash
-./start.sh --model mistral --system-prompt prompts/custom.txt --ollama-url http://localhost:11434
-```
+Switching persona, model or any setting keeps the conversation history.
 
-## RAG: answers from your HR documents
+## RAG: answers from your HR documents [R1]
 
 The assistant can answer from your own documents (HR policies, agreements, legal fact sheets).
 Everything runs locally: embeddings are computed by Ollama and stored in the SQLite database.
@@ -102,7 +118,7 @@ Then, in the chatbot, index the documents of `data/docs` (or any folder):
 
 ```
 You: /ingest
-Indexing .../data/docs... (can take a minute the first time)
+Indexing .../data/docs...
 8 document(s) indexed (69 chunks), 0 unchanged, 0 removed.
 ```
 
@@ -124,11 +140,11 @@ A question unrelated to the documents ("Quelle est la recette de la pizza ?") ge
 
 | Step | File | What it does |
 |---|---|---|
-| Load | `src/rag/Loader.py` | reads .txt / .md / .pdf files, keeps PDF page numbers |
-| Chunk | `src/rag/Chunker.py` | splits text into ~500-token chunks with a 50-token overlap, at paragraph, sentence, line then word boundaries |
-| Embed | `src/rag/Embeddings.py` | turns each chunk into a vector with Ollama `/api/embed` (`nomic-embed-text`) |
-| Store | `src/rag/Store.py` | saves chunks and vectors in SQLite, re-embeds only new or modified files |
-| Retrieve | `src/rag/Retriever.py` | embeds the question, ranks chunks by cosine similarity, keeps the best ones above a threshold, within the token budget |
+| Load | `back/rag/Loader.py` | reads .txt / .md / .pdf files, keeps PDF page numbers |
+| Chunk | `back/rag/Chunker.py` | splits text into ~500-token chunks with a 50-token overlap, at paragraph, sentence, line then word boundaries |
+| Embed | `back/rag/Embeddings.py` | turns each chunk into a vector with Ollama `/api/embed` (`nomic-embed-text`) |
+| Store | `back/rag/Store.py` | saves chunks and vectors in SQLite, re-embeds only new or modified files |
+| Retrieve | `back/rag/Retriever.py` | embeds the question, ranks chunks by cosine similarity, keeps the best ones above a threshold, within the token budget |
 
 ### Settings (`.env`)
 
@@ -153,25 +169,41 @@ Changing `RAG_EMBED_MODEL` or the chunk settings requires running `/ingest` agai
 
 ```
 sensai/
-├── chatbot.py          # main script
-├── system_prompt.txt   # default system prompt
-├── .env.example         # example configuration (copy to .env)
-├── requirements.txt     # Python dependencies
-├── install.sh           # sets up venv + dependencies + .env
-├── start.sh              # activates venv and runs the chatbot
-└── README.md
+├── back/
+│   ├── Chatbot.py          # startup, login and chat loop
+│   ├── Server.py           # web interface entry point (X1)
+│   ├── Web/                # FastAPI app, sessions, SSE output, API routes
+│   ├── Commands.py         # session state and slash commands
+│   ├── Memories/           # SQLite database, accounts, history, compression, token limit
+│   ├── rag/                # RAG: loader, chunker, embeddings, store, retriever
+│   ├── Agents/             # ReAct loop and tool handling
+│   ├── Tools/              # web search tools and their declarations
+│   ├── Runtime/            # personas, models, temperature, settings
+│   ├── StructuredOutput/   # leave request schema, extraction, storage, LeaveRequest.py (T5)
+│   ├── config/             # system_prompt.txt and personas/ (JSON)
+│   └── tests/              # unit tests
+├── front/                  # web interface: React + Vite, CSS Modules, icons, fonts
+├── data/docs/              # HR documents indexed by /ingest
+├── storage/                # sensai.db (not in git)
+├── docs/                   # README, scenario, user_stories/
+├── .env.example            # configuration template (copy to .env)
+├── requirements.txt
+├── install.sh
+└── start.sh
 ```
 
-## Error handling
+## Tests
 
-| Situation | Behavior |
+```bash
+source .venv/bin/activate
+python3 -m unittest discover -s back/tests -p "Test_*.py"
+```
+
+## Troubleshooting
+
+| Problem | Fix |
 |---|---|
-| Empty input | Prompts the user again, no request sent |
-| Ollama not running | Clear error message, session continues |
-| Model unavailable / bad request | Clear error message, session continues |
-| Connection dropped mid-stream | Error message, that turn is discarded from history |
-
-## Roadmap
-
-This MVP covers the mandatory base loop only. Additional features (memory persistence across
-sessions, RAG, guardrails, etc.) are tracked separately as the project scope is defined.
+| `cannot connect to Ollama` | start it with `ollama serve` |
+| `model ... not found` | pull it: `ollama pull <model>`, or pick an installed one with `/model` |
+| `no such column: conversation_id` at startup | your database was created by an older version: delete `storage/sensai.db`, then log in and run `/ingest` again |
+| The answers ignore the HR documents | run `/ingest`, and ask full questions rather than keywords |
