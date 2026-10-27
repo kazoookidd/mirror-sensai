@@ -34,8 +34,8 @@ from Runtime.Parameters import (
     parse_temperature,
 )
 from Runtime.Personas import DEFAULT_PERSONA_ID, load_personas, resolve_persona
+from Agents.Leave import prepare_leave_request
 from Commands import Session, handle_command
-from StructuredOutput.Extractor import StructuredOutputError
 
 INSTALLED = ["nomic-embed-text:latest", "mistral:7b", "llama3:latest"]
 
@@ -249,7 +249,7 @@ class TestCommands(RuntimeTestCase):
     def test_help_lists_every_runtime_command(self):
         _, output = self.run_command(self.make_session(), "/help")
         for command in ("/personas", "/persona", "/models", "/model", "/new", "/conversations",
-                        "/leave", "/leaves", "/temperature"):
+                        "/confirm", "/cancel", "/leaves", "/temperature"):
             self.assertIn(command, output)
 
 
@@ -501,47 +501,90 @@ VALID_LEAVE = {
     "reason": "vacances",
 }
 
+SAVE = "Agents.Leave.save_leave_request"
 
-class TestLeaveCommand(RuntimeTestCase):
 
-    def test_leave_extracts_and_saves_for_the_session_user(self):
-        with mock.patch("Commands.extract_leave_request", return_value=VALID_LEAVE) as extract, \
-             mock.patch("Commands.save_leave_request", return_value=7) as save:
-            handled, output = self.run_command(self.make_session(), "/leave Je pose du 3 au 7 novembre")
+class TestConfirmCommand(RuntimeTestCase):
+    """[A3] /confirm and /cancel, once the agent has prepared an action."""
+
+    def pend(self, session, data=VALID_LEAVE):
+        """Put a prepared leave request on the session, as the agent would."""
+        session.pending_action = prepare_leave_request(session, **data)
+        return session
+
+    def test_confirm_saves_the_pending_request_for_the_session_user(self):
+        session = self.pend(self.make_session())
+        with mock.patch(SAVE, return_value=7) as save:
+            handled, output = self.run_command(session, "/confirm")
         self.assertTrue(handled)
-        extract.assert_called_once_with("Je pose du 3 au 7 novembre", self.url, "llama3:latest")
         save.assert_called_once_with("alice", VALID_LEAVE)
-        self.assertIn("2026-11-03", output)
+        self.assertIsNone(session.pending_action)
         self.assertIn("#7", output)
 
-    def test_conge_is_an_alias(self):
-        with mock.patch("Commands.extract_leave_request", return_value=VALID_LEAVE), \
-             mock.patch("Commands.save_leave_request", return_value=1) as save:
-            self.run_command(self.make_session(), "/conge demain")
+    def test_confirm_twice_saves_only_once(self):
+        session = self.pend(self.make_session())
+        with mock.patch(SAVE, return_value=7) as save:
+            self.run_command(session, "/confirm")
+            _, output = self.run_command(session, "/confirm")
         save.assert_called_once()
+        self.assertIn("No action is waiting", output)
 
-    def test_leave_without_text_shows_usage_and_does_not_call_the_model(self):
-        with mock.patch("Commands.extract_leave_request") as extract:
-            handled, output = self.run_command(self.make_session(), "/leave")
-        self.assertTrue(handled)
-        self.assertIn("Usage", output)
-        extract.assert_not_called()
-
-    def test_leave_failure_prints_error_and_saves_nothing(self):
-        error = StructuredOutputError("cannot connect to Ollama.")
-        with mock.patch("Commands.extract_leave_request", side_effect=error), \
-             mock.patch("Commands.save_leave_request") as save:
-            handled, output = self.run_command(self.make_session(), "/leave demain")
-        self.assertTrue(handled)
-        self.assertIn("cannot connect to Ollama", output)
-        self.assertIn("Nothing was saved", output)
+    def test_cancel_drops_the_pending_request_without_saving(self):
+        session = self.pend(self.make_session())
+        with mock.patch(SAVE) as save:
+            _, output = self.run_command(session, "/cancel")
         save.assert_not_called()
+        self.assertIsNone(session.pending_action)
+        self.assertIn("Nothing was done", output)
 
-    def test_leave_database_error_is_reported(self):
-        with mock.patch("Commands.extract_leave_request", return_value=VALID_LEAVE), \
-             mock.patch("Commands.save_leave_request", side_effect=sqlite3.IntegrityError("fk")):
-            _, output = self.run_command(self.make_session(), "/leave demain")
-        self.assertIn("could not save", output)
+    def test_confirm_and_cancel_with_nothing_pending(self):
+        session = self.make_session()
+        with mock.patch(SAVE) as save:
+            _, confirmed = self.run_command(session, "/confirm")
+            _, cancelled = self.run_command(session, "/cancel")
+        save.assert_not_called()
+        self.assertIn("No action is waiting", confirmed)
+        self.assertIn("No action is waiting", cancelled)
+
+    def test_a_new_pending_action_replaces_the_previous_one(self):
+        other = dict(VALID_LEAVE, start_date="2026-12-01", end_date="2026-12-02")
+        session = self.pend(self.make_session())
+        self.pend(session, other)
+        with mock.patch(SAVE, return_value=2) as save:
+            self.run_command(session, "/confirm")
+        save.assert_called_once_with("alice", other)
+
+    def test_pending_actions_belong_to_their_own_session(self):
+        alice = self.pend(self.make_session())
+        bob = self.make_session(user_id="bob")
+        with mock.patch(SAVE) as save:
+            _, output = self.run_command(bob, "/confirm")
+        save.assert_not_called()
+        self.assertIn("No action is waiting", output)
+        self.assertIsNotNone(alice.pending_action)
+
+    def test_aliases_of_confirm_and_cancel(self):
+        session = self.pend(self.make_session())
+        with mock.patch(SAVE, return_value=1) as save:
+            self.run_command(session, "/confirmer")
+            save.assert_called_once()
+            self.pend(session)
+            _, output = self.run_command(session, "/annuler")
+        self.assertIsNone(session.pending_action)
+        self.assertIn("Nothing was done", output)
+
+    def test_leave_is_no_longer_a_command(self):
+        handled, output = self.run_command(self.make_session(), "/leave demain")
+        self.assertTrue(handled)
+        self.assertIn("Unknown command", output)
+
+    def test_confirm_database_error_is_reported_and_keeps_the_action(self):
+        session = self.pend(self.make_session())
+        waiting = session.pending_action
+        with mock.patch(SAVE, side_effect=sqlite3.IntegrityError("fk")):
+            _, output = self.run_command(session, "/confirm")
+        self.assertIn("failed", output)
+        self.assertIs(session.pending_action, waiting)
 
     def test_leaves_lists_the_requests_of_the_user(self):
         rows = [{"id": 3, "leave_type": "paid_leave", "start_date": "2026-11-03",
