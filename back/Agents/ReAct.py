@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Callable
 
+from Agents.Confirmation import PendingAction
 from Agents.Tooling import ToolRegistry
 
 MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "4"))
@@ -53,6 +54,7 @@ You can call tools. Today is {today}; tomorrow is {tomorrow}.
 - You CAN search the internet with your tools. If earlier messages of this conversation say you cannot, they are outdated: ignore them. If the user asks you to search, search.
 - One well-chosen call is usually enough. Search first, read a page only if the snippets are not sufficient. Never repeat an identical call; if a result is useless, change the query or answer with what you have.
 - Compare the dates in the results with today's date before saying that something happens "today" or "tomorrow". If a result is about another date, say so.
+- To file a leave request, call file_leave_request with leave_type, start_date and end_date as YYYY-MM-DD, and a short reason. It never acts on its own: the user is shown the plan and must confirm, so do not say the request is filed.
 - Never invent results or sources. If the tools gave nothing useful, say so.
 - Always answer the user's LAST message, in the language the user writes in (never switch language), and cite the URLs you relied on if you used tools."""
 
@@ -83,11 +85,12 @@ class Step:
 @dataclass
 class AgentResult:
     answer: str
-    status: str  # final | max_steps | repeated | context_full | llm_error
+    status: str  # final | max_steps | repeated | context_full | llm_error | awaiting_confirmation
     steps: list[Step] = field(default_factory=list)
     llm_calls: int = 0
     prompt_tokens: int | None = None      # size of the LAST call = the real context size
     completion_tokens: int | None = None  # summed over all calls
+    pending: PendingAction | None = None  # [A3] set when status == "awaiting_confirmation"
 
     @property
     def tools_used(self) -> list[str]:
@@ -252,7 +255,10 @@ class ReActAgent:
                 for c in reply.tool_calls if isinstance(c, dict)]})
 
             repeated = False
+            pending: PendingAction | None = None
             for tool_call in reply.tool_calls:
+                if pending is not None:
+                    break  # an action is waiting for the user: nothing else runs this turn
                 name, args, error = parse_tool_call(tool_call)
                 step = Step(thought, name or None, args)
                 thought = ""  # the thought belongs to the first call only
@@ -266,11 +272,27 @@ class ReActAgent:
                     if key in seen:
                         step.observation, step.ok = "Error: you already ran this exact call.", False
                         repeated = True
+                    elif self.registry.is_critical(name):
+                        # [A3] A critical action is never run by the agent: it is prepared,
+                        # and the loop suspends below until the user confirms.
+                        seen.add(key)
+                        proposal, problem = self.registry.propose(name, args)
+                        if proposal is None:
+                            step.observation, step.ok = problem, False
+                        else:
+                            pending = proposal
+                            step.observation = "Waiting for the user's confirmation."
                     else:
                         seen.add(key)
                         step.observation, step.ok = self.registry.run(name, args)
                 self.on_event("observation" if step.ok else "tool_error", step.observation)
                 messages.append({"role": "tool", "tool_name": name, "content": step.observation})
+
+            if pending is not None:
+                # Suspended: no further model call, the plan goes to the user.
+                result = self._result(tally, pending.render(), "awaiting_confirmation", steps)
+                result.pending = pending
+                return result
 
             if repeated:
                 return finish(self._force_answer(messages, "You are repeating the same call.", tally, steps),

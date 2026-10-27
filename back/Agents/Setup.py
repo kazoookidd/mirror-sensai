@@ -53,6 +53,18 @@ def web_tools(session) -> dict[str, Callable]:
     return {"search_internet": search_internet, "read_webpage": read_webpage}
 
 
+@register_provider
+def hr_tools(session) -> dict[str, Callable]:
+    """[A3] Critical tool: it only prepares the request, the user's /confirm saves it."""
+    from Agents.Leave import prepare_leave_request
+
+    def file_leave_request(leave_type: str, start_date: str, end_date: str,
+                           reason: str = "") -> object:
+        return prepare_leave_request(session, leave_type, start_date, end_date, reason)
+
+    return {"file_leave_request": file_leave_request}
+
+
 def build_registry(session, tools_path: str = DEFAULT_TOOLS_PATH) -> ToolRegistry:
     """Bind every tool declared in tools.json to the function a provider offers.
     A declared tool nobody provides fails with a clear message at startup;

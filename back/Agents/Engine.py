@@ -96,6 +96,10 @@ def generate_reply(session, context: list[dict], user_input: str):
         session.out.error(result.answer)
         return None
 
+    if result.pending is not None:
+        # [A3] The agent is suspended: the action waits for /confirm or /cancel.
+        session.pending_action = result.pending
+
     if result.answer.strip() != last_text["value"].strip():
         session.out.answer(result.answer)  # answer produced by a fallback, not streamed
     return Reply(result.answer, result.prompt_tokens, result.completion_tokens,

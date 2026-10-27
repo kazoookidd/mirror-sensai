@@ -18,7 +18,7 @@ directly through the Ollama HTTP API. The use case is described in
 | R1 | RAG: answers based on your HR documents | `/ingest`, then ask a question |
 | A5 | HR personas, model switching at runtime | `/personas`, `/persona`, `/models`, `/model` |
 | A1 + T3 | ReAct agent: the model searches the web when it needs to | automatic (`AGENT_TOOLS=true`) |
-| T5 | Leave request written in plain language, saved as validated JSON | `/leave`, `/leaves` |
+| A3 | Human in the loop: the agent presents its plan and waits | `/confirm`, `/cancel`, `/leaves` |
 | | Temperature setting | `/temperature` |
 | X1 | Web interface: streaming chat, context gauge, model and settings, history, documents | `./start.sh --web` |
 
@@ -95,7 +95,8 @@ Goodbye.
 | `/temperature [value]` | show or set the temperature |
 | `/settings [name [value]]` | show or change a setting |
 | `/search`, `/switch_search [name]` | list the search engines, or switch to one |
-| `/leave <request>`, `/leaves` | file a leave request in plain language, or list yours |
+| `/confirm`, `/cancel` | go ahead with the action waiting for your approval, or drop it |
+| `/leaves` | list the leave requests you filed |
 | `/ingest [folder]` | index HR documents for the RAG (default: `data/docs`) |
 | `exit` | quit |
 
@@ -179,7 +180,6 @@ sensai/
 │   ├── Agents/             # ReAct loop and tool handling
 │   ├── Tools/              # web search tools and their declarations
 │   ├── Runtime/            # personas, models, temperature, settings
-│   ├── StructuredOutput/   # leave request schema, extraction, storage, LeaveRequest.py (T5)
 │   ├── config/             # system_prompt.txt and personas/ (JSON)
 │   └── tests/              # unit tests
 ├── front/                  # web interface: React + Vite, CSS Modules, icons, fonts

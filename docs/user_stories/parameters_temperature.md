@@ -48,14 +48,6 @@ Critères d'acceptation :
 
 ## Cohérence avec les autres fonctions
 
-**US-TE-06** En tant que responsable RH, je veux que l'extraction des demandes de congés (`/leave`) soit toujours reproductible, afin que la même phrase donne toujours le même enregistrement, quelle que soit la température du chat.
-
-Critères d'acceptation :
-
-* `/leave` s'exécute toujours à la température 0
-* Le réglage de température du chat ne modifie pas le résultat de `/leave`
-* L'aide de `/leave` ou `/help` indique cette exception
-
 **US-TE-07** En tant qu'utilisateur, je veux que le changement de persona ou de modèle conserve ma température, afin de ne pas devoir la redéfinir à chaque changement.
 
 Critères d'acceptation :

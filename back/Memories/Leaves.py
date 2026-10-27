@@ -1,4 +1,7 @@
+"""Leave requests saved after the user confirmed them ([A3])."""
+
 from Memories.Database import get_connection
+
 
 def init_store(db_path: str = None) -> None:
     """Create the leave_requests table if needed. Safe to call repeatedly."""
@@ -20,8 +23,9 @@ def init_store(db_path: str = None) -> None:
     finally:
         conn.close()
 
+
 def save_leave_request(user_id: str, data: dict, db_path: str = None) -> int:
-    """Insert a validated leave request and return its id."""
+    """Insert a leave request and return its id."""
     init_store(db_path)
     conn = get_connection(db_path)
     try:

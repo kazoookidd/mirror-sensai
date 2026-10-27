@@ -6,7 +6,6 @@ type that starts with "/" (and the conversation picker it relies on) lives
 here, so the two files can evolve independently.
 """
 
-import json
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,8 +15,8 @@ from Memories.Conversations import (
     list_conversations,
 )
 from Memories.TokenLimit import DEFAULT_ACTION
-from StructuredOutput.Extractor import StructuredOutputError, extract_leave_request
-from StructuredOutput.Store import list_leave_requests, save_leave_request
+from Agents.Confirmation import PendingAction
+from Memories.Leaves import list_leave_requests
 from Runtime.Personas import resolve_persona
 from Runtime.Parameters import (
     MAX_TEMPERATURE,
@@ -52,8 +51,9 @@ HELP_TEXT = """Available commands:
                                 /settings token-limit continue)
   /switch_search [name|number]  switch the search motor
   /search                       list the search motors
-  /leave <your request>         file a leave request in plain language
-                                (e.g. /leave I take Nov 3 to 7 for a holiday)
+  /confirm                      go ahead with the action waiting for your approval
+                                (prepared by the assistant in the chat)
+  /cancel                       drop it without doing anything
   /leaves                       list the leave requests you have filed
   /ingest [folder]              index HR documents so answers can use them (default: data/docs)
   /cache [clear]                show the semantic cache, or empty it
@@ -62,8 +62,8 @@ HELP_TEXT = """Available commands:
 
 Switching persona, model or any setting keeps the conversation history.
 /set is accepted as an alias of /settings.
-(/leave always runs at temperature 0 so its result is reproducible.)
-/conge and /conges are accepted as aliases of /leave and /leaves."""
+/conges is accepted as an alias of /leaves,
+/confirmer and /annuler as aliases of /confirm and /cancel."""
 
 
 @dataclass
@@ -95,6 +95,9 @@ class Session:
     num_predict: int | None = None
     # Where the chat turn writes what the user sees (Runtime/Output.py)
     out: object = field(default_factory=CliOutput)
+    # [A3] Critical action prepared by the agent, waiting for /confirm or /cancel.
+    # Kept here, on the server side: the user only confirms, never sends the fields back.
+    pending_action: PendingAction | None = None
 
     @property
     def persona(self) -> dict:
@@ -230,32 +233,37 @@ def switch_model(session: Session, requested: str) -> None:
 
 
 # ---------------------------------------------------------------------
-# Leave requests (structured output)
+# [A3] Confirmation of a critical action prepared by the agent
 # ---------------------------------------------------------------------
 
-def file_leave_request(session: Session, text: str) -> None:
-    if not text:
-        print("Usage: /leave <your request in plain language>")
-        print("Example: /leave I take Nov 3 to 7 for a holiday")
-        return
-
-    print("Analysing your request...")
-    try:
-        data = extract_leave_request(text, session.ollama_url, session.model)
-    except StructuredOutputError as e:
-        print(f"Error: {e}")
-        print("Nothing was saved.")
+def confirm_pending_action(session: Session) -> None:
+    """[A3] The only place where a critical action is really carried out."""
+    pending = session.pending_action
+    if pending is None:
+        print("No action is waiting for confirmation. "
+              "Ask Sensai in the chat, then type /confirm.")
         return
 
     try:
-        request_id = save_leave_request(session.user_id, data)
-    except sqlite3.Error as e:
-        print(f"Error: could not save the request ({e}).")
+        result = pending.execute()
+    except Exception as e:
+        # Still pending: the user can retry without asking the model again.
+        print(f"Error: the action failed ({e}). "
+              f"It is still waiting: type /confirm to try again, or /cancel.")
         return
 
-    print(json.dumps(data, indent=2, ensure_ascii=False))
-    print(f"Leave request #{request_id} saved for {session.user_id}. "
-          f"See all yours with /leaves.")
+    session.pending_action = None
+    print(pending.plan)
+    print(result)
+
+
+def cancel_pending_action(session: Session) -> None:
+    if session.pending_action is None:
+        print("No action is waiting for confirmation.")
+        return
+    title = session.pending_action.title
+    session.pending_action = None
+    print(f"Dropped: {title}. Nothing was done.")
 
 
 def print_leave_requests(session: Session) -> None:
@@ -267,7 +275,7 @@ def print_leave_requests(session: Session) -> None:
 
     print("=== Your leave requests ===")
     if not requests_:
-        print("(none yet, file one with /leave <your request>)")
+        print("(none yet, ask Sensai in the chat, then type /confirm)")
         return
     for r in requests_:
         reason = f" : {r['reason']}" if r["reason"] else ""
@@ -405,8 +413,10 @@ def handle_command(session: Session, text: str) -> bool:
         set_temperature(session, argument)
     elif command in ("/settings", "/set"):
         change_setting(session, argument)
-    elif command in ("/leave", "/conge"):
-        file_leave_request(session, argument)
+    elif command in ("/confirm", "/confirmer"):
+        confirm_pending_action(session)
+    elif command in ("/cancel", "/annuler"):
+        cancel_pending_action(session)
     elif command in ("/leaves", "/conges"):
         print_leave_requests(session)
     elif command == "/ingest":

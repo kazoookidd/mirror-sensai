@@ -13,9 +13,6 @@ Two more options of the model, same life cycle (SEED / NUM_PREDICT in
 For every one of them None means "do not send anything": Ollama then uses
 the default of the model. It is the default, so nothing changes for users
 who never touch the settings.
-
-The structured output ([T5], /leave) always runs at temperature 0 so its
-result is reproducible; these settings do not apply to it.
 """
 
 MIN_TEMPERATURE = 0.0

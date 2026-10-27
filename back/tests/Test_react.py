@@ -21,9 +21,11 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Agents.ReAct import LLMError, ModelReply, ReActAgent, ollama_llm, parse_tool_call, repeats_earlier_answer
-from Agents.Setup import build_registry, format_search_results
+from Agents.Confirmation import PendingAction
+from Agents.Engine import generate_reply
+from Agents.Setup import DEFAULT_TOOLS_PATH, build_registry, format_search_results, hr_tools
 from Agents.Tooling import Tool, ToolRegistry, load_tool_specs
-from Commands import Session
+from Commands import Session, handle_command
 
 SEARCH = {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
 READ = {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}
@@ -306,7 +308,7 @@ class TestSetup(unittest.TestCase):
     def test_real_tools_json_binds_and_the_engine_is_read_from_the_session_at_call_time(self):
         session = self.session("tavily")
         registry = build_registry(session)
-        self.assertEqual(registry.names(), ["search_internet", "read_webpage"])
+        self.assertEqual(registry.names(), ["search_internet", "read_webpage", "file_leave_request"])
         with mock.patch("Tools.web_search.search_internet", return_value=[]) as fake:
             registry.run("search_internet", {"query": "x"})
             session.search_motor = "exa"  # /switch_search
@@ -319,6 +321,131 @@ class TestSetup(unittest.TestCase):
             text, ok = registry.run("search_internet", {"query": "x"})
         self.assertFalse(ok)
         self.assertIn("BRAVE_SEARCH_API_KEY", text)
+
+
+VALID_LEAVE = {"leave_type": "paid_leave", "start_date": "2026-11-03",
+               "end_date": "2026-11-07", "reason": "vacances"}
+SAVE = "Agents.Leave.save_leave_request"
+CRITICAL = {"type": "object", "properties": {"request": {"type": "string"}}, "required": ["request"]}
+
+
+def critical_registry(executed, prepare=None, searched=None):
+    """A registry with one critical tool. `executed` records the real side effect."""
+    def file_it(request):
+        return PendingAction("Leave to confirm", f"I will file: {request}",
+                             lambda: executed.append(request) or "filed")
+
+    def search_internet(query):
+        (searched if searched is not None else []).append(query)
+        return "results"
+
+    return ToolRegistry([Tool("file_leave_request", "File", CRITICAL, prepare or file_it, critical=True),
+                         Tool("search_internet", "Search", SEARCH, search_internet)])
+
+
+class TestHumanInTheLoop(unittest.TestCase):
+    """[A3] A critical tool never acts: the agent suspends and waits for the user."""
+
+    def test_the_agent_suspends_presents_its_plan_and_does_nothing(self):
+        executed = []
+        llm = Script(tools_reply(call("file_leave_request", {"request": "lundi"})))
+        result = ReActAgent(llm, critical_registry(executed)).run("je pose lundi")
+        self.assertEqual(result.status, "awaiting_confirmation")
+        self.assertEqual(executed, [])
+        self.assertEqual(result.llm_calls, 1)  # suspended: no further model call
+        self.assertIn("I will file: lundi", result.answer)
+        self.assertIn("/confirm", result.answer)
+        self.assertIn("/cancel", result.answer)
+
+    def test_the_action_runs_only_when_the_user_confirms(self):
+        executed = []
+        result = ReActAgent(Script(tools_reply(call("file_leave_request", {"request": "lundi"}))),
+                            critical_registry(executed)).run("q")
+        self.assertEqual(executed, [])
+        self.assertEqual(result.pending.execute(), "filed")  # what /confirm does
+        self.assertEqual(executed, ["lundi"])
+
+    def test_a_critical_tool_cannot_be_run_directly(self):
+        executed = []
+        registry = critical_registry(executed)
+        text, ok = registry.run("file_leave_request", {"request": "lundi"})
+        self.assertFalse(ok)
+        self.assertIn("confirmation", text)
+        self.assertEqual(executed, [])
+
+    def test_a_call_that_cannot_be_prepared_goes_back_to_the_model_and_nothing_waits(self):
+        def refuse(request):
+            raise ValueError("no dates found")
+        llm = Script(tools_reply(call("file_leave_request", {"request": "bof"})), say("Which dates?"))
+        result = ReActAgent(llm, critical_registry([], prepare=refuse)).run("q")
+        self.assertEqual((result.status, result.answer), ("final", "Which dates?"))
+        self.assertIsNone(result.pending)
+        self.assertIn("no dates found", llm.seen[1][-1]["content"])
+
+    def test_a_critical_tool_that_does_not_return_an_action_fails_closed(self):
+        executed = []
+        llm = Script(tools_reply(call("file_leave_request", {"request": "x"})), say("sorry"))
+        result = ReActAgent(llm, critical_registry(executed, prepare=lambda request: "done")).run("q")
+        self.assertIsNone(result.pending)
+        self.assertEqual(result.status, "final")
+        self.assertEqual(executed, [])
+
+    def test_bad_arguments_never_reach_a_critical_tool(self):
+        prepared = []
+        llm = Script(tools_reply(call("file_leave_request", {"request": 42})), say("ok"))
+        ReActAgent(llm, critical_registry([], prepare=lambda request: prepared.append(request))).run("q")
+        self.assertEqual(prepared, [])
+
+    def test_nothing_else_runs_in_the_turn_once_an_action_is_waiting(self):
+        searched = []
+        llm = Script(tools_reply(call("file_leave_request", {"request": "lundi"}),
+                                 call("search_internet", {"query": "x"})))
+        result = ReActAgent(llm, critical_registry([], searched=searched)).run("q")
+        self.assertEqual(result.status, "awaiting_confirmation")
+        self.assertEqual(searched, [])
+
+    def test_ordinary_tools_still_run_without_confirmation(self):
+        searched = []
+        llm = Script(tools_reply(call("search_internet", {"query": "x"})), say("done"))
+        result = ReActAgent(llm, critical_registry([], searched=searched)).run("q")
+        self.assertEqual((result.status, searched), ("final", ["x"]))
+        self.assertIsNone(result.pending)
+
+    def test_tools_json_declares_the_leave_tool_as_critical_and_the_others_as_not(self):
+        flags = {s["name"]: s["critical"] for s in load_tool_specs(DEFAULT_TOOLS_PATH)}
+        self.assertTrue(flags["file_leave_request"])
+        self.assertFalse(flags["search_internet"])
+        self.assertFalse(flags["read_webpage"])
+
+    def test_the_real_leave_tool_prepares_without_saving(self):
+        session = Session(user_id="alice", conversation_id=1, model="m", persona_id="default",
+                          personas={}, ollama_url="x", search_motor="tavily")
+        registry = ToolRegistry.from_json(DEFAULT_TOOLS_PATH, {
+            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session)})
+        self.assertTrue(registry.is_critical("file_leave_request"))
+        with mock.patch(SAVE) as save:
+            pending, problem = registry.propose("file_leave_request", VALID_LEAVE)
+            self.assertEqual(problem, "")
+            save.assert_not_called()
+            self.assertIn("2026-11-03", pending.plan)
+            text, ok = registry.run("file_leave_request", VALID_LEAVE)
+            self.assertFalse(ok)
+            save.assert_not_called()
+
+    def test_bad_leave_fields_go_back_to_the_model_and_nothing_is_saved(self):
+        session = Session(user_id="alice", conversation_id=1, model="m", persona_id="default",
+                          personas={}, ollama_url="x", search_motor="tavily")
+        registry = ToolRegistry.from_json(DEFAULT_TOOLS_PATH, {
+            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session)})
+        llm = Script(tools_reply(call("file_leave_request",
+                                      {**VALID_LEAVE, "leave_type": "holiday"})),
+                     say("Which type of leave?"))
+        with mock.patch(SAVE) as save:
+            result = ReActAgent(llm, registry).run("q")
+        self.assertEqual(result.status, "final")
+        self.assertIsNone(result.pending)
+        save.assert_not_called()
+        self.assertIn("leave_type", llm.seen[1][-1]["content"])
 
 
 class FakeOllama(BaseHTTPRequestHandler):
@@ -395,6 +522,29 @@ class TestEndToEnd(unittest.TestCase):
         r = ReActAgent(ollama_llm("http://127.0.0.1:9", "llama3"), make_registry()).run("q")
         self.assertEqual(r.status, "llm_error")
         self.assertIn("cannot connect", r.answer)
+
+    def test_chat_turn_suspends_on_the_leave_tool_and_only_confirm_saves(self):
+        """[A3] Whole path: model -> agent -> engine -> /confirm."""
+        FakeOllama.scripted = [[{"content": "", "tool_calls": [
+            call("file_leave_request", VALID_LEAVE)]}]]
+        session = Session(user_id="alice", conversation_id=1, model="llama3", persona_id="default",
+                          personas={}, ollama_url=self.url, search_motor="tavily")
+        session.tools = ToolRegistry.from_json(DEFAULT_TOOLS_PATH, {
+            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session)})
+        context = [{"role": "system", "content": "s"}, {"role": "user", "content": "je pose lundi"}]
+        buf = io.StringIO()
+        with mock.patch(SAVE, return_value=4) as save:
+            with redirect_stdout(buf):
+                reply = generate_reply(session, context, "je pose lundi")
+                self.assertEqual(len(FakeOllama.received), 1)  # the agent stopped: no second call
+                save.assert_not_called()
+                self.assertIsNotNone(session.pending_action)
+                self.assertTrue(reply.used_tools)  # so the semantic cache never keeps this answer
+                self.assertIn("/confirm", reply.text)
+                handle_command(session, "/confirm")
+            save.assert_called_once_with("alice", VALID_LEAVE)
+        self.assertIsNone(session.pending_action)
+        self.assertIn("#4", buf.getvalue())
 
 
 if __name__ == "__main__":
