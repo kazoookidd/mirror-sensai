@@ -20,7 +20,9 @@ is an HR assistant, centred on employee onboarding.
 - **Semantic cache** ([A6]): a question that means the same as an earlier one is answered instantly, with
   no model call
 - **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
-- **Structured output** ([T5]): `/leave` turns a plain-language request into a validated leave request
+- **Human in the loop** ([A3]): before a critical action the agent suspends and presents its plan; it only
+  proceeds after your explicit `/confirm` (or you drop it with `/cancel`). Filing a leave request is the
+  critical action: tell Sensai "I take Monday off" in the chat, nothing is written until you confirm
 - **Web interface** ([X1]): the same assistant in the browser, streaming answers, live context gauge,
   model switching, settings, history; phone, tablet and desktop, light and dark themes
 - **Configurable via `.env`**, with command-line overrides
@@ -153,7 +155,8 @@ tokens: 27 in · 21 out
 | `/temperature [value\|default]` | show or set how creative the answers are (0 to 2) |
 | `/settings [name [value]]` (`/set`) | list the settings or change one: `temperature`, `token-limit`, `token-usage`, `cache`, `seed`, `num-predict` |
 | `/search`, `/switch_search [name\|number]` | list / switch the search engine (Brave, Tavily, Exa) |
-| `/leave <request>`, `/leaves` | file a leave request in plain language, list yours |
+| `/confirm`, `/cancel` | go ahead with the action waiting for your approval, or drop it |
+| `/leaves` | list the leave requests you filed |
 | `/ingest [folder]` | index HR documents for the RAG (also empties the semantic cache) |
 | `/cache [clear]` | show the semantic cache, or empty it |
 | `exit` | quit |
@@ -175,6 +178,32 @@ Assistant: D'après les résultats trouvés (https://...), ...
 - Guards for small models: a limit of steps, an identical call is not run twice, a bad tool call is
   reported to the model instead of crashing, and an answer that repeats an old one is rejected.
 - Adding a tool: one entry in `tools.json` + one provider in `back/Agents/Setup.py`.
+
+### Human in the loop ([A3])
+
+A tool marked `"critical": true` in `tools.json` can never act on its own. `file_leave_request` is the first
+one: when the user says "je pose lundi", the agent fills the fields itself, **suspends** (no further model
+call) and presents its plan:
+
+```
+You: Je pose du 3 au 7 novembre pour des vacances
+  · Preparing a leave request: paid_leave, 2026-11-03, 2026-11-07, vacances
+Assistant: === Leave request to confirm ===
+I will file this leave request for alice:
+  type:   paid_leave
+  from:   2026-11-03
+  to:     2026-11-07
+  reason: vacances
+Nothing has been done yet. Type /confirm to go ahead, or /cancel to drop it.
+You: /confirm
+Leave request #7 saved for alice. See all yours with /leaves.
+```
+
+- The action only runs on `/confirm`, with exactly the data that was shown. `/cancel`, or a new request, drops it.
+- The pending action is held on the server, in the user's session: the same in the terminal and in the web UI.
+- Safety nets: the registry refuses to run a critical tool directly, and a critical tool that does not return
+  an action to confirm is treated as an error (it fails closed).
+- Never cached by the semantic cache (tools were used).
 
 ## Semantic cache ([A6])
 
@@ -336,7 +365,6 @@ sensai/
 │   ├── Tools/                # tools.json, web search, page reader
 │   ├── Cache/                # semantic cache: storage, policy, chat glue
 │   ├── rag/                  # loader, chunker, embeddings, store, retriever
-│   ├── StructuredOutput/     # leave request extraction, storage, LeaveRequest.py script
 │   ├── config/               # system_prompt.txt and personas/ (one JSON file per persona)
 │   ├── tests/                # Test_*.py (no real Ollama needed)
 │   └── Dockerfile            # image of the API server (docker compose)

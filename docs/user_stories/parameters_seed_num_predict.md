@@ -79,13 +79,6 @@ Critères d'acceptation :
 * Le réglage précédent reste actif et le message le rappelle (« unchanged »)
 * Le message rappelle les valeurs acceptées
 
-**US-OP-03** En tant que responsable RH, je veux que l'extraction des demandes de congés (`/leave`) reste reproductible, afin que la même phrase donne toujours le même enregistrement quels que soient les réglages du chat.
-
-Critères d'acceptation :
-
-* `/leave` ne reçoit ni la graine ni la limite de longueur du chat : il s'exécute à la température 0
-* Modifier `seed` ou `num-predict` ne change pas le résultat de `/leave`
-
 **US-OP-04** En tant qu'utilisateur, je veux que le changement d'un réglage conserve ma conversation, afin de ne pas devoir recommencer.
 
 Critères d'acceptation :
