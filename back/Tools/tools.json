@@ -36,5 +36,40 @@
                 ]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_leave_request",
+            "label": "Preparing a leave request",
+            "critical": true,
+            "description": "Prepare a leave request (paid leave, sick leave, remote work, ...) for the user. Use it ONLY when the user clearly asks to take, book or file leave. Fill leave_type, start_date and end_date yourself from what the user said. This tool does NOT file anything: the plan is shown to the user, who must confirm before the request is saved. After calling it, stop: do not claim the request is filed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "leave_type": {
+                        "type": "string",
+                        "description": "One of: paid_leave, sick_leave, marriage, bereavement, remote_work, unpaid_leave, other."
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "First day of the leave, YYYY-MM-DD."
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Last day of the leave, YYYY-MM-DD. Same as start_date for a single day."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Short reason in the user's language. Empty string if none."
+                    }
+                },
+                "required": [
+                    "leave_type",
+                    "start_date",
+                    "end_date"
+                ]
+            }
+        }
     }
 ]
