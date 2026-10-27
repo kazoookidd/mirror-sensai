@@ -13,6 +13,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from Agents.Confirmation import PendingAction
+
 MAX_OBSERVATION_CHARS = int(os.getenv("AGENT_MAX_OBSERVATION_CHARS", "4000"))
 
 _JSON_TYPES = {
@@ -28,6 +30,9 @@ class Tool:
     parameters: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
     func: Callable[..., Any] | None = None
     label: str = ""  # optional human wording shown to the user, e.g. "Searching the web"
+    # [A3] Critical tool: its function does not act, it PREPARES the action and returns a
+    # PendingAction. The agent suspends and only the user's /confirm runs it.
+    critical: bool = False
 
     def required(self) -> list[str]:
         return list(self.parameters.get("required", []))
@@ -54,8 +59,9 @@ def _normalize(entry: dict) -> dict | None:
     if not isinstance(params, dict):
         params = {}
     label = spec.get("label") or entry.get("label") or ""
+    critical = spec.get("critical", entry.get("critical", False)) is True
     return {"name": str(spec["name"]), "description": str(spec.get("description", "")),
-            "parameters": params, "label": str(label)}
+            "parameters": params, "label": str(label), "critical": critical}
 
 
 def load_tool_specs(path: str) -> list[dict]:
@@ -126,17 +132,43 @@ class ToolRegistry:
             raise ValueError(
                 f"tools.json declares {sorted(unbound)} but no function was provided "
                 f"(available: {sorted(functions)})")
-        return cls([Tool(s["name"], s["description"], s["parameters"], functions[s["name"]], s["label"])
+        return cls([Tool(s["name"], s["description"], s["parameters"], functions[s["name"]],
+                         s["label"], s["critical"])
                     for s in specs])
 
     def names(self) -> list[str]:
         return list(self.tools)
+
+    def is_critical(self, name: str) -> bool:
+        tool = self.tools.get(name)
+        return tool is not None and tool.critical
+
+    def propose(self, name: str, args: Any) -> tuple[PendingAction | None, str]:
+        """[A3] Prepare a critical tool. Returns (action, "") or (None, error text).
+        Nothing is done here: the action only runs when the user confirms.
+        Fails closed: anything that is not a PendingAction is an error."""
+        tool = self.tools.get(name)
+        if tool is None or not tool.critical:
+            return None, f"Error: '{name}' is not a tool that needs confirmation."
+        problem = _check_args(tool, args if isinstance(args, dict) else {})
+        if problem or not isinstance(args, dict):
+            return None, f"Error calling {name}: {problem or 'arguments must be a JSON object'}"
+        try:
+            pending = tool.func(**args)
+        except Exception as e:  # e.g. the request could not be understood: the model may retry
+            return None, f"Error: {name} failed ({type(e).__name__}: {e})"
+        if not isinstance(pending, PendingAction):
+            return None, f"Error: {name} did not prepare an action."
+        return pending, ""
 
     def run(self, name: str, args: Any) -> tuple[str, bool]:
         """Execute a tool. Returns (observation_text, ok). Never raises."""
         tool = self.tools.get(name)
         if tool is None:
             return f"Error: unknown tool '{name}'. Available tools: {', '.join(self.tools)}", False
+        if tool.critical:
+            # Safety net: a critical tool never runs directly, whoever asks.
+            return f"Error: '{name}' needs the user's confirmation and cannot be run directly.", False
         if args is None:
             args = {}
         if not isinstance(args, dict):
