@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { helpText } from "./CommandMenu/commands.js";
 import { Composer } from "./Composer/Composer.jsx";
+import { useApp } from "../../context/AppContext.jsx";
 import { AppShell } from "../../layout/AppShell.jsx";
 import { StartView } from "./StartView.jsx";
 import { ThreadView } from "./ThreadView.jsx";
@@ -11,11 +12,12 @@ export function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const composer = useRef(null);
+  const { ollama } = useApp();
 
   const onConversation = useCallback((conversation) => {
     navigate(`/chat/${conversation.id}`, { replace: true });
   }, [navigate]);
-  const { messages, conversation, busy, send, retry, load, reset, runCommand } = useChat({ onConversation });
+  const { messages, versions, conversation, busy, send, edit, regenerate, stop, retry, load, reset, runCommand } = useChat({ onConversation });
 
   const submit = (text) => {
     if (!text.startsWith("/"))
@@ -44,12 +46,13 @@ export function ChatPage() {
   const nav = conversation
   ? { active: "chat", mobile: "back", title: conversation.title, back: "/history", tabs: false }
   : { active: "chat", mobile: started ? "back" : "root", title: "", back: "/history", tabs: !started };
-  const input = <Composer ref={composer} busy={busy} onSend={submit} />;
+  const input = <Composer ref={composer} busy={busy} onSend={submit} onStop={stop} />;
 
   return (
     <AppShell nav={nav}>
       {started
-      ? <ThreadView messages={messages} composer={input} onRetry={retry} />
+      ? <ThreadView messages={messages} versions={versions} busy={busy} offline={!ollama.online} composer={input} onRetry={retry}
+        onEdit={edit} onRegenerate={regenerate} onVersion={(conversationId) => navigate(`/chat/${conversationId}`)} />
       : <StartView composer={input} onSuggestion={(text) => composer.current.fill(text)} />}
     </AppShell>
   );

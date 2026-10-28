@@ -6,7 +6,7 @@ import styles from "./Messages.module.css";
 
 const COPIED_MS = 1500;
 
-export function MessageActions({ text }) {
+export function MessageActions({ text, busy, onRegenerate }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export function MessageActions({ text }) {
       {copied
         ? <IconButton icon="check" iconSize={14} iconDisplay={16} label="Copied" onClick={copy} />
         : <IconButton icon="copy" label="Copy the answer" onClick={copy} />}
-      <IconButton icon="refresh" label="Regenerate" test />
+      {onRegenerate && <IconButton icon="refresh" label="Regenerate" disabled={busy} onClick={onRegenerate} />}
       <span className="separator separator--small" aria-hidden="true" />
       <Button variant="ghost" icon="file-text" disabled title="[TEST] Sources from the HR documents: not available yet">
         View sources <TestTag />

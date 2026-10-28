@@ -11,7 +11,7 @@ import styles from "./Composer.module.css";
 const PLACEHOLDER = "Ask SENSAI a question...";
 const OFFLINE_PLACEHOLDER = "Connect Ollama to send a message";
 
-export const Composer = forwardRef(function Composer({ onSend, busy, className }, ref) {
+export const Composer = forwardRef(function Composer({ onSend, onStop, busy, className }, ref) {
   const { ollama } = useApp();
   const [text, setText] = useState("");
   const [highlighted, setHighlighted] = useState(0);
@@ -95,12 +95,12 @@ export const Composer = forwardRef(function Composer({ onSend, busy, className }
           <IconButton icon="paperclip" label="Attach a file" test />
           <button className={styles.knowledge} type="button" disabled aria-pressed="false" data-test-corner=""
             title="[TEST] Turn the HR documents on or off: not available yet (they are always searched)">
-            <Icon name="database" size={16} />HR documents
+            <Icon name="database" size={16} /><span className="truncate">HR documents</span>
           </button>
         </div>
         <ContextGauge />
         {busy
-          ? <IconButton icon="stop" label="Stop generating" variant="outline" test />
+          ? <IconButton icon="stop" label="Stop generating" variant="outline" onClick={onStop} />
           : <IconButton icon="arrow-up" label="Send" variant="primary" disabled={offline || !text.trim()} onClick={() => submit()} />}
       </div>
     </div>
