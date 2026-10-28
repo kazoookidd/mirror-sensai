@@ -45,18 +45,28 @@ CONTEXT_CHAR_BUDGET = int(os.getenv("AGENT_CONTEXT_CHARS", "24000"))  # ~6000 to
 DEFAULT_PROMPT = "You are a helpful assistant."
 
 # Appended to the system prompt of the active persona when tools are offered.
-TOOL_GUIDANCE = """
+# A line tied to a tool is only given when that tool is offered (AGENT_WEB_TOOLS=false removes the web).
+GUIDANCE_HEAD = "\n\n--- Tools ---\nYou can call tools. Today is {today}; tomorrow is {tomorrow}."
+GUIDANCE_LINES = (
+    (None, "- Answer directly, with no tool, whenever you can do so reliably: general knowledge, explanations, writing, reformulating, advice, anything about this conversation."),
+    ("search_internet", "- Use a tool only for information that is recent, current, or must be verified externally (news, schedules, prices, versions, rules that may have changed), or for the content of a specific web page."),
+    ("search_internet", "- You CAN search the internet with your tools. If earlier messages of this conversation say you cannot, they are outdated: ignore them. If the user asks you to search, search."),
+    ("search_internet", "- A search query leaves this machine. Never put a personal detail in it (the user's name, e-mail, phone, salary, health, family events): search for the general rule instead, e.g. \"congé mariage durée code du travail\"."),
+    ("search_internet", "- One well-chosen call is usually enough. Search first, read a page only if the snippets are not sufficient. Never repeat an identical call; if a result is useless, change the query or answer with what you have."),
+    ("search_internet", "- Compare the dates in the results with today's date before saying that something happens \"today\" or \"tomorrow\". If a result is about another date, say so."),
+    ("file_leave_request", "- To file a leave request, call file_leave_request with leave_type, start_date and end_date as YYYY-MM-DD, and a short reason. It never acts on its own: the user is shown the plan and must confirm, so do not say the request is filed."),
+    (None, "- Before calling a tool, write one short sentence in the user's language: what you look for and why. The user sees it as your reasoning."),
+    (None, "- Never invent results or sources. If the tools gave nothing useful, say so."),
+    (None, "- Always answer the user's LAST message, in the language the user writes in (never switch language), and cite the URLs you relied on if you used tools."),
+)
 
---- Tools ---
-You can call tools. Today is {today}; tomorrow is {tomorrow}.
-- Answer directly, with no tool, whenever you can do so reliably: general knowledge, explanations, writing, reformulating, advice, anything about this conversation.
-- Use a tool only for information that is recent, current, or must be verified externally (news, schedules, prices, versions, rules that may have changed), or for the content of a specific web page.
-- You CAN search the internet with your tools. If earlier messages of this conversation say you cannot, they are outdated: ignore them. If the user asks you to search, search.
-- One well-chosen call is usually enough. Search first, read a page only if the snippets are not sufficient. Never repeat an identical call; if a result is useless, change the query or answer with what you have.
-- Compare the dates in the results with today's date before saying that something happens "today" or "tomorrow". If a result is about another date, say so.
-- To file a leave request, call file_leave_request with leave_type, start_date and end_date as YYYY-MM-DD, and a short reason. It never acts on its own: the user is shown the plan and must confirm, so do not say the request is filed.
-- Never invent results or sources. If the tools gave nothing useful, say so.
-- Always answer the user's LAST message, in the language the user writes in (never switch language), and cite the URLs you relied on if you used tools."""
+
+def tool_guidance(names) -> str:
+    """The tool guidance for the tools offered (`names`)."""
+    return GUIDANCE_HEAD + "".join(f"\n{line}" for tool, line in GUIDANCE_LINES if tool is None or tool in names)
+
+
+TOOL_GUIDANCE = tool_guidance({tool for tool, _ in GUIDANCE_LINES})  # every tool offered
 
 
 class LLMError(Exception):
@@ -140,7 +150,7 @@ class ReActAgent:
     def __init__(self, llm: LLM, registry: ToolRegistry, system_prompt: str | None = None,
                  max_steps: int = MAX_STEPS, temperature: float | None = TEMPERATURE,
                  on_event: Event | None = None, context_char_budget: int = CONTEXT_CHAR_BUDGET,
-                 guidance: str = TOOL_GUIDANCE):
+                 guidance: str | None = None):
         self.llm = llm
         self.registry = registry
         self.system_prompt = system_prompt or DEFAULT_PROMPT
@@ -148,7 +158,7 @@ class ReActAgent:
         self.temperature = temperature
         self.on_event = on_event or (lambda kind, text: None)
         self.context_char_budget = context_char_budget
-        self.guidance = guidance
+        self.guidance = guidance if guidance is not None else tool_guidance(registry.names())
 
     # -- bookkeeping -------------------------------------------------------
     def _call(self, messages, tools, tally: dict) -> ModelReply:

@@ -101,6 +101,8 @@ class Session:
     # [A3] Critical action prepared by the agent, waiting for /confirm or /cancel.
     # Kept here, on the server side: the user only confirms, never sends the fields back.
     pending_action: PendingAction | None = None
+    # E-mail of the account: removed from anything the web tools send (Tools/privacy.py)
+    email: str | None = None
 
     @property
     def persona(self) -> dict:

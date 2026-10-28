@@ -35,6 +35,18 @@ def user_id_for_email(email: str) -> str | None:
         conn.close()
 
 
+def email_of(user_id: str) -> str | None:
+    """Return the email of this account, or None."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT email FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return row["email"] if row else None
+    finally:
+        conn.close()
+
+
 def create_user(user_id: str, email: str, password: str) -> dict:
     """Create a new user account with a salted, hashed password.
     Raises ValueError if the user_id or email is already taken."""
