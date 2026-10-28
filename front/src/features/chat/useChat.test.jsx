@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { attachments } from "../../api/attachments.js";
 import { conversations } from "../../api/conversations.js";
 import { chat, commands } from "../../api/chat.js";
 import { useChat } from "./useChat.js";
@@ -11,6 +12,7 @@ const app = {
 vi.mock("../../context/AppContext.jsx", () => ({ useApp: () => app }));
 vi.mock("../../api/chat.js", () => ({ chat: { send: vi.fn(), stop: vi.fn() }, commands: { run: vi.fn() } }));
 vi.mock("../../api/conversations.js", () => ({ conversations: { messages: vi.fn() } }));
+vi.mock("../../api/attachments.js", () => ({ attachments: { join: vi.fn() } }));
 
 function streams(...events) {
   chat.send.mockImplementation(async (text, id, onEvent) => events.forEach(([name, data]) => onEvent(name, data)));
@@ -158,6 +160,46 @@ describe("useChat", () => {
     streams(["conversation", { id: 12, title: "Leave", branch: true }], ["token", { text: "ok" }], DONE);
     await act(() => result.current.retry(failure));
     expect(chat.send.mock.calls[1][3]).toBe(0);
+  });
+
+  it("shows the action waiting for confirmation on its answer until a command settles it", async () => {
+    const card = { title: "Leave request to confirm", plan: "I will file this leave request" };
+    streams(["conversation", { id: 5, title: "Leave" }], ["confirmation", card], ["answer", { text: "=== plan ===" }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("I take Monday off"));
+    expect(result.current.messages[1].confirmation).toEqual(card);
+    commands.run.mockResolvedValue({ output: "Still waiting", model: "m", pending: card });
+    await act(() => result.current.runCommand("/leaves"));
+    expect(result.current.messages[1].confirmation).toEqual(card);
+    commands.run.mockResolvedValue({ output: "Dropped", model: "m", pending: null });
+    await act(() => result.current.runCommand("/cancel"));
+    expect(result.current.messages[1].confirmation).toBeNull();
+  });
+
+  it("puts the waiting action back on the last answer when the conversation is reloaded", async () => {
+    const card = { title: "Leave request to confirm", plan: "plan" };
+    conversations.messages.mockResolvedValue({
+      conversation: { id: 5, title: "Leave" }, versions: [], pending: card,
+      messages: [{ role: "user", content: "Q" }, { role: "assistant", content: "=== plan ===" }],
+    });
+    const { result } = setup();
+    await act(() => result.current.load(5));
+    expect(result.current.messages.map((message) => message.confirmation)).toEqual([undefined, card]);
+  });
+
+  it("a file attached before the first message opens the chat, the next ones join it", async () => {
+    attachments.join
+      .mockResolvedValueOnce({ conversation: { id: 8, title: "contract.md" }, attachment: { source: "contract.md", chunks: 2 } })
+      .mockResolvedValueOnce({ conversation: { id: 8, title: "contract.md" }, attachment: { source: "rider.txt", chunks: 1 } })
+      .mockRejectedValueOnce(new Error("SENSAI could not read any text in this file (a scanned PDF?)."));
+    const { result, onConversation } = setup();
+    await act(() => result.current.attach([new File(["a"], "contract.md"), new File(["b"], "rider.txt")]));
+    expect(attachments.join.mock.calls.map(([file, id]) => [file.name, id])).toEqual([["contract.md", undefined], ["rider.txt", 8]]);
+    expect(onConversation).toHaveBeenCalledWith({ id: 8, title: "contract.md" });
+    expect(result.current.attachments.map((item) => item.source)).toEqual(["contract.md", "rider.txt"]);
+    await act(() => result.current.attach([new File(["c"], "scan.pdf")]));
+    expect(result.current.attaching).toEqual({ name: null, error: "scan.pdf: SENSAI could not read any text in this file (a scanned PDF?)." });
+    expect(result.current.attachments).toHaveLength(2);
   });
 
   it("loads a saved conversation, and reset empties the thread", async () => {

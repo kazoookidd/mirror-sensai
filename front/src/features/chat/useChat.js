@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useApp } from "../../context/AppContext.jsx";
+import { attachments as attachmentsApi } from "../../api/attachments.js";
 import { conversations } from "../../api/conversations.js";
 import { chat, commands } from "../../api/chat.js";
 
@@ -19,10 +20,16 @@ export function useChat({ onConversation }) {
   const [versions, setVersions] = useState([]);
   const [conversation, setConversation] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [attaching, setAttaching] = useState({ name: null, error: "" });
   const current = useRef(null);
 
   const updateAnswer = (id, change) => setMessages((list) => list.map((message) => (
     message.id === id ? { ...message, ...change(message) } : message)));
+
+  // [A3] One action waits at a time, on the answer that prepared it.
+  const showConfirmation = (id, confirmation) => setMessages((list) => list.map((message) => (
+    message.id === id ? { ...message, confirmation } : message.confirmation ? { ...message, confirmation: null } : message)));
 
   const refreshVersions = useCallback(async (id) => {
     try {
@@ -51,6 +58,8 @@ export function useChat({ onConversation }) {
           setContext({ tokens: data.tokens, budget: data.budget });
         } else if (name === "token") {
           updateAnswer(answerId, (message) => ({ text: message.text + data.text }));
+        } else if (name === "confirmation") {
+          showConfirmation(answerId, { title: data.title, plan: data.plan });
         } else if (name === "answer") {
           updateAnswer(answerId, () => ({ text: data.text }));
         } else if (name === "usage") {
@@ -118,6 +127,7 @@ export function useChat({ onConversation }) {
     try {
       const result = await commands.run(text);
       updateAnswer(id, () => ({ output: result.output, pending: false }));
+      if (!result.pending) showConfirmation(null, null);
       setModel(result.model);
       refreshPersonas();
     } catch (failure) {
@@ -125,6 +135,25 @@ export function useChat({ onConversation }) {
     }
     setBusy(false);
   }, [setModel, refreshPersonas]);
+
+  const attach = useCallback(async (files) => {
+    for (const file of files) {
+      setAttaching({ name: file.name, error: "" });
+      try {
+        const data = await attachmentsApi.join(file, current.current?.id);
+        if (!current.current) {
+          current.current = data.conversation;
+          setConversation(data.conversation);
+          onConversation(data.conversation);
+        }
+        setAttachments((list) => [...list.filter((item) => item.source !== data.attachment.source), data.attachment]);
+      } catch (failure) {
+        setAttaching({ name: null, error: `${file.name}: ${failure.message}` });
+        return;
+      }
+    }
+    setAttaching({ name: null, error: "" });
+  }, [onConversation]);
 
   const retry = useCallback((failure) => {
     const userId = [...messages].reverse().find((message) => message.role === "user")?.id;
@@ -137,9 +166,13 @@ export function useChat({ onConversation }) {
     const loaded = { id: data.conversation.id, title: data.conversation.title };
     current.current = loaded;
     setConversation(loaded);
-    setMessages(data.messages.map((message, position) => (
-      { id: newId(), role: message.role, text: message.content, saved: true, position })));
+    const loadedMessages = data.messages.map((message, position) => (
+      { id: newId(), role: message.role, text: message.content, saved: true, position }));
+    const last = loadedMessages.at(-1);
+    if (data.pending && last?.role === "assistant") last.confirmation = data.pending;
+    setMessages(loadedMessages);
     setVersions(data.versions);
+    setAttachments(data.attachments ?? []);
     setContext((context) => ({ ...context, tokens: estimateTokens(data.messages) }));
   }, [setContext]);
 
@@ -148,8 +181,13 @@ export function useChat({ onConversation }) {
     setConversation(null);
     setMessages([]);
     setVersions([]);
+    setAttachments([]);
+    setAttaching({ name: null, error: "" });
     setContext((context) => ({ ...context, tokens: 0 }));
   }, [setContext]);
 
-  return { messages, versions, conversation, busy, send, edit, regenerate, stop, retry, load, reset, runCommand };
+  return {
+    messages, versions, conversation, busy, attachments, attaching,
+    send, edit, regenerate, stop, retry, load, reset, runCommand, attach,
+  };
 }

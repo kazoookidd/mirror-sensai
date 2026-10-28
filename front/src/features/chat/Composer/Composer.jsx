@@ -5,18 +5,21 @@ import { useApp } from "../../../context/AppContext.jsx";
 import { cx } from "../../../lib/cx.js";
 import { Icon } from "../../../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../../../components/ui/IconButton/IconButton.jsx";
+import { ACCEPTED } from "../../documents/useImport.js";
+import { Attachments } from "./Attachments.jsx";
 import { ContextGauge } from "./ContextGauge.jsx";
 import styles from "./Composer.module.css";
 
 const PLACEHOLDER = "Ask SENSAI a question...";
 const OFFLINE_PLACEHOLDER = "Connect Ollama to send a message";
 
-export const Composer = forwardRef(function Composer({ onSend, onStop, busy, className }, ref) {
+export const Composer = forwardRef(function Composer({ onSend, onStop, busy, attachments = [], attaching = {}, onAttach, className }, ref) {
   const { ollama } = useApp();
   const [text, setText] = useState("");
   const [highlighted, setHighlighted] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const input = useRef(null);
+  const picker = useRef(null);
   const offline = !ollama.online;
   const commands = dismissed || busy ? [] : matchCommands(text);
 
@@ -73,6 +76,7 @@ export const Composer = forwardRef(function Composer({ onSend, onStop, busy, cla
       {commands.length > 0 && (
         <CommandMenu commands={commands} highlighted={highlighted} onChoose={choose} onHighlight={setHighlighted} />
       )}
+      <Attachments attachments={attachments} attaching={attaching} />
       <textarea
         ref={input}
         className={styles.input}
@@ -92,7 +96,10 @@ export const Composer = forwardRef(function Composer({ onSend, onStop, busy, cla
       />
       <div className={styles.footer}>
         <div className={styles.tools}>
-          <IconButton icon="paperclip" label="Attach a file" test />
+          <IconButton icon="paperclip" label="Attach a file to this chat" disabled={offline || Boolean(attaching.name)}
+            onClick={() => picker.current.click()} />
+          <input ref={picker} type="file" accept={ACCEPTED} multiple hidden aria-label="Choose files to attach"
+            onChange={(event) => { onAttach([...event.target.files]); event.target.value = ""; }} />
           <button className={styles.knowledge} type="button" disabled aria-pressed="false" data-test-corner=""
             title="[TEST] Turn the HR documents on or off: not available yet (they are always searched)">
             <Icon name="database" size={16} /><span className="truncate">HR documents</span>
