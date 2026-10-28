@@ -25,6 +25,8 @@ is an HR assistant, centred on employee onboarding.
   critical action: tell Sensai "I take Monday off" in the chat, nothing is written until you confirm
 - **Web interface** ([X1]): the same assistant in the browser, streaming answers, live context gauge,
   model switching, settings, history; phone, tablet and desktop, light and dark themes
+- **Branches and stop** ([X2]): edit a question or regenerate an answer to continue in a new branch
+  (`< 1/2 >` to switch); stop an answer while it is written (Stop button, or Ctrl+C in the CLI)
 - **Configurable via `.env`**, with command-line overrides
 - **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
 
@@ -249,8 +251,10 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
 - Log in with an account created in the CLI (its email or its user id).
 - Answers stream word by word; the gauge under the composer shows the context used against
   `CONTEXT_TOKEN_BUDGET`.
-- Model, temperature and answer length are changed live, with the same checks as `/model` and `/settings`.
-- History: search, sort, rename, delete. Documents: the files of `data/docs` and whether they are indexed.
+- Model, persona, temperature and answer length are changed live, with the same checks as `/model`,
+  `/persona` and `/settings` (persona: sidebar and Settings; the chat history is kept).
+- History: search, sort, rename, delete (also from the "⋯" menu of each recent chat in the sidebar).
+  Documents: the files of `data/docs` and whether they are indexed.
 - Typing `/` in the composer lists the slash commands with what they do; they run on the same code as
   the CLI (`POST /api/command`), and the output is shown in the chat without being saved.
 - Desktop: a left sidebar (sections, recent chats, model, Ollama status). Clicking the account opens a
@@ -261,8 +265,8 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
 - The server listens on `127.0.0.1` only (`WEB_HOST`, `WEB_PORT` in `.env`).
 
 Controls marked `[TEST]` are designed but not connected yet: importing documents, querying a selection,
-sources under the answers, stop and regenerate, attaching a file, the documents toggle, the profile page,
-and the model used by each past conversation.
+sources under the answers, attaching a file, the documents toggle, the profile page, and the model used
+by each past conversation.
 
 The front end (`front/`) is React 18 with Vite, in JavaScript (JSX). Each component has its CSS Module
 next to it; only the design tokens, fonts and a few utilities are global (`src/styles/`):
@@ -271,11 +275,12 @@ next to it; only the design tokens, fonts and a few utilities are global (`src/s
 front/src/
 ├── main.jsx, App.jsx    # entry point, routes (#/chat, #/documents, #/history, #/settings, #/profile), error screen
 ├── context/             # AppContext: user, Ollama status, models, context gauge, recent chats
-├── lib/                 # shared helpers: HTTP, Server-Sent Events, formats, theme, safe Markdown rendering
+├── api/                 # every call to the backend: HTTP and streaming helpers, one file per domain
+├── lib/                 # shared helpers: formats, theme, safe Markdown rendering
 ├── components/          # shared components: ui/ (Button, Field, Dialog...) and feedback/ (EmptyState...)
 ├── layout/              # AppShell, left sidebar, mobile app bar and tab bar, Page, slide transitions
-└── features/            # one folder per domain, with its pages, components and API calls:
-                         #   auth, chat, ollama, history, documents, settings, profile, account, errors
+└── features/            # one folder per domain, with its pages and components:
+                         #   auth, chat, ollama, personas, history, documents, settings, profile, account, errors
 ```
 
 Front tests (Vitest, no server or Ollama needed) sit next to the file they test:

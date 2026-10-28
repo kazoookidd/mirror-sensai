@@ -21,6 +21,7 @@ directly through the Ollama HTTP API. The use case is described in
 | A3 | Human in the loop: the agent presents its plan and waits | `/confirm`, `/cancel`, `/leaves` |
 | | Temperature setting | `/temperature` |
 | X1 | Web interface: streaming chat, context gauge, model and settings, history, documents | `./start.sh --web` |
+| X2 | Branches (edit a question, regenerate an answer) and stopping an answer while it is written | web: pencil, Regenerate, Stop; CLI: Ctrl+C |
 
 User stories for each feature are in [`docs/user_stories/`](user_stories/).
 
