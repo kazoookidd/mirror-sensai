@@ -1,4 +1,4 @@
-import { deleteJson, getJson, patchJson } from "../../lib/http.js";
+import { deleteJson, getJson, patchJson } from "./http.js";
 
 export const conversations = {
   list: () => getJson("/conversations"),

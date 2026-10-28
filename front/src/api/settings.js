@@ -1,4 +1,4 @@
-import { getJson, putJson } from "../../lib/http.js";
+import { getJson, putJson } from "./http.js";
 
 export const settings = {
   get: () => getJson("/settings"),

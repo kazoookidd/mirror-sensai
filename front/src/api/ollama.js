@@ -1,4 +1,4 @@
-import { getJson, putJson } from "../../lib/http.js";
+import { getJson, putJson } from "./http.js";
 
 export const status = {
   get: () => getJson("/status", { redirect: false }),
