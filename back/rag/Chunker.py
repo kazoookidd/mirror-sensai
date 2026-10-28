@@ -1,9 +1,7 @@
 import os
 import re
-from dotenv import load_dotenv
 from Memories.Compression import CHARS_PER_TOKEN
 
-load_dotenv()
 DEFAULT_CHUNK_TOKENS = 500
 DEFAULT_OVERLAP_TOKENS = 50
 OVERLAP_SEPARATOR = "\n"

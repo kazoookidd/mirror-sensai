@@ -4,10 +4,14 @@ import argparse
 import os
 import getpass
 from dataclasses import dataclass, field
-from dotenv import load_dotenv
+
+from Runtime.Env import load_env
+
+# Before the project imports below: some of them read their settings when imported.
+load_env()
 
 from Memories.Database import init_db
-from Memories.Auth import get_or_create_user
+from Memories.Auth import email_of, get_or_create_user
 from Memories.Memory import save_message, load_history
 from Memories.Compression import build_context, estimate_tokens
 from Memories.TokenLimit import (
@@ -384,7 +388,7 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
         persona_id=persona_id,
         personas=personas,
         ollama_url=args.ollama_url,
-        search_motor="tavily",
+        search_motor=os.getenv("SEARCH_ENGINE", "tavily").strip().lower() or "tavily",
         token_limit_action=token_limit_action,
         show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
         temperature=temperature,
@@ -392,6 +396,7 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
         num_predict=num_predict,
         tools_enabled=parse_bool(os.getenv("AGENT_TOOLS"), True),
         show_tool_activity=parse_bool(os.getenv("AGENT_SHOW_ACTIVITY"), True),
+        email=email_of(user_id),
     )
     if session.tools_enabled:
         try:
@@ -402,7 +407,6 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
 
 
 def main():
-    load_dotenv()
     init_db()
     args = build_parser().parse_args()
 

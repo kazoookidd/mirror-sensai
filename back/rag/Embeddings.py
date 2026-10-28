@@ -1,9 +1,7 @@
 import logging
 import os
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DOCUMENT_PREFIX = "search_document: "

@@ -1,12 +1,10 @@
 import logging
 import os
 import numpy as np
-from dotenv import load_dotenv
 from Memories.Compression import estimate_tokens
 from rag.Embeddings import embed_query
 from rag.Store import EMBEDDING_DTYPE, load_chunks
 
-load_dotenv()
 DEFAULT_MIN_SCORE = 0.70
 DEFAULT_TOP_K = 3
 CONTEXT_HEADER = (

@@ -1,15 +1,12 @@
 import os
 import time
 import requests
-from dotenv import load_dotenv
 
 from .Database import get_connection
 from .Memory import load_history_with_ids
 from .Conversations import get_conversation
 
-load_dotenv()  # ensures env vars are available even if this module is
-               # imported before Chatbot.py calls load_dotenv() itself
-
+# Read at import: the entry points load .env first (Runtime/Env.py).
 DEFAULT_BUDGET = int(os.getenv("CONTEXT_TOKEN_BUDGET", "4000"))
 DEFAULT_THRESHOLD_RATIO = float(os.getenv("CONTEXT_THRESHOLD_RATIO", "0.8"))
 DEFAULT_KEEP_LAST_N = int(os.getenv("CONTEXT_KEEP_LAST_N", "10"))
