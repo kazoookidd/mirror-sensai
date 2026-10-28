@@ -217,6 +217,45 @@
   color: var(--color-error-default);
 }
 
+.confirmation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-accent-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--ring-accent);
+}
+
+.confirmationTitle {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+  color: var(--color-accent-default);
+  font-weight: 600;
+}
+
+.confirmationFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.confirmationHint {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.confirmationButtons {
+  display: flex;
+  gap: var(--spacing-2);
+  margin-left: auto;
+}
+
 @media (max-width: 767px) {
   .bubble {
     max-width: 280px;

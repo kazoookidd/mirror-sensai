@@ -8,7 +8,7 @@ import styles from "./ThreadView.module.css";
 
 const STICK_DISTANCE = 160;
 
-export function ThreadView({ messages, versions, busy, offline, composer, onRetry, onEdit, onRegenerate, onVersion }) {
+export function ThreadView({ messages, versions, busy, offline, composer, toolbar, onRetry, onEdit, onRegenerate, onVersion, onCommand }) {
   const scroller = useRef(null);
   const versionAt = Object.fromEntries(versions.map((version) => [version.index, version]));
   const stick = useRef(true);
@@ -24,6 +24,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, onRetr
 
   return (
     <div className={styles.chat}>
+      {toolbar && <div className={styles.toolbar}>{toolbar}</div>}
       <div ref={scroller} className={styles.thread} onScroll={onScroll}>
         <div className={styles.messages} role="log" aria-live="polite">
           {messages.map((message) => {
@@ -34,7 +35,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, onRetr
             if (message.role === "failure") return <FailureBanner key={message.id} kind={message.kind} onRetry={() => onRetry(message)} />;
             if (message.role === "command") return <CommandResult key={message.id} {...message} />;
             return <AssistantMessage key={message.id} model={message.model} text={message.text} busy={busy || offline}
-              streaming={message.streaming} stopped={message.stopped}
+              streaming={message.streaming} stopped={message.stopped} confirmation={message.confirmation} onCommand={onCommand}
               onRegenerate={message.saved ? () => onRegenerate(message) : undefined} />;
           })}
         </div>
