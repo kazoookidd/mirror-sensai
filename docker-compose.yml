@@ -22,6 +22,7 @@ services:
       - WEB_PORT=8000
     volumes:
       - sensai_data:/app/storage
+      - sensai_docs:/app/data/docs
     depends_on:
       ollama-init:
         condition: service_completed_successfully
@@ -52,5 +53,7 @@ services:
 volumes:
   sensai_data:
     name: sensai_data
+  sensai_docs:
+    name: sensai_docs
   ollama_models:
     name: sensai_ollama_models

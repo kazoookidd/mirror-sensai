@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ErrorBanner } from "../../components/feedback/ErrorBanner/ErrorBanner.jsx";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { AppShell } from "../../layout/AppShell.jsx";
 import { Page, PageHeader } from "../../layout/Page.jsx";
@@ -7,16 +8,27 @@ import { ImportButton, QueryButton } from "./DocumentButtons.jsx";
 import { DropZone, EmptyBase } from "./DropZone.jsx";
 import { FileCards } from "./FileCards.jsx";
 import { FileTable } from "./FileTable.jsx";
+import { useImport } from "./useImport.js";
 import styles from "./DocumentsPage.module.css";
+
+function ImportResults({ results }) {
+  return results.map((result) => (result.ok
+    ? <p key={result.name} className="info-note" role="status"><Icon name="check" size={14} />{result.name} imported: {result.chunks} {result.chunks === 1 ? "chunk" : "chunks"} indexed.</p>
+    : <ErrorBanner key={result.name} title={`${result.name} was not imported`}>{result.error}</ErrorBanner>));
+}
 
 export function DocumentsPage() {
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
   const [selection, setSelection] = useState(() => new Set());
 
-  useEffect(() => {
-    documentsApi.list().then(setData).catch(() => setFailed(true));
+  const refresh = useCallback(() => {
+    documentsApi.list().then((next) => { setData(next); setFailed(false); }).catch(() => setFailed(true));
   }, []);
+  const upload = useImport(refresh);
+  const zone = { importing: upload.importing, onPick: upload.open, onDrop: upload.importFiles };
+
+  useEffect(refresh, [refresh]);
 
   const toggle = (source) => setSelection((current) => {
     const next = new Set(current);
@@ -36,13 +48,15 @@ export function DocumentsPage() {
           mobileSubtitle="Import HR documents to enrich the answers."
           actions={<>
             {selection.size > 0 && <span className="desktop-only"><QueryButton label={`Ask about the selection · ${selection.size}`} /></span>}
-            <ImportButton className="desktop-only" />
+            <ImportButton className="desktop-only" importing={upload.importing} onClick={upload.open} />
           </>} />
-        <ImportButton className="mobile-only" />
+        <ImportButton className="mobile-only" importing={upload.importing} onClick={upload.open} />
+        <input {...upload.inputProps} aria-label="Choose documents to import" />
+        <ImportResults results={upload.results} />
         {failed && <p className="info-note"><Icon name="alert" size={16} />Could not read the knowledge base.</p>}
-        {data && !items.length && <EmptyBase />}
+        {data && !items.length && <EmptyBase {...zone} />}
         {items.length > 0 && <>
-          <DropZone />
+          <DropZone {...zone} />
           <div className={`${styles.listHeader} desktop-only`}>
             <div className={styles.listTitle}>
               <h2 className="text-heading">Imported documents</h2>

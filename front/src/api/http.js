@@ -41,6 +41,18 @@ export async function request(method, path, body, options) {
   return response.json();
 }
 
+export async function download(path) {
+  const response = await check(await fetch(`${API}${path}`, { credentials: "same-origin" }));
+  const name = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "sensai-chat";
+  return { name, blob: await response.blob() };
+}
+
+export async function sendFile(path, file) {
+  const response = await fetch(`${API}${path}`, { method: "POST", body: file, credentials: "same-origin" });
+  await check(response);
+  return response.json();
+}
+
 export const getJson = (path, options) => request("GET", path, undefined, options);
 export const postJson = (path, body, options) => request("POST", path, body, options);
 export const putJson = (path, body) => request("PUT", path, body);
