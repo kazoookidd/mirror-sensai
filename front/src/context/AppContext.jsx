@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { auth } from "../features/auth/api.js";
-import { conversations as conversationsApi } from "../features/history/api.js";
-import { models as modelsApi, status as statusApi } from "../features/ollama/api.js";
-import { settings as settingsApi } from "../features/settings/api.js";
-import { whenUnauthorized } from "../lib/http.js";
+import { auth } from "../api/auth.js";
+import { conversations as conversationsApi } from "../api/conversations.js";
+import { models as modelsApi, status as statusApi } from "../api/ollama.js";
+import { personas as personasApi } from "../api/personas.js";
+import { settings as settingsApi } from "../api/settings.js";
+import { whenUnauthorized } from "../api/http.js";
 
 const STATUS_INTERVAL_MS = 15000;
 
@@ -18,6 +19,8 @@ export function AppProvider({ children }) {
   const [modelInstalled, setModelInstalled] = useState(true);
   const [context, setContext] = useState({ tokens: 0, budget: 0 });
   const [conversations, setConversations] = useState([]);
+  const [personas, setPersonas] = useState([]);
+  const [persona, setPersona] = useState("");
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -49,6 +52,20 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const refreshPersonas = useCallback(async () => {
+    try {
+      const data = await personasApi.list();
+      setPersonas(data.personas);
+      setPersona(data.current);
+    } catch {
+      setPersonas([]);
+    }
+  }, []);
+
+  const choosePersona = useCallback(async (id) => {
+    setPersona((await personasApi.select(id)).current);
+  }, []);
+
   const chooseModel = useCallback(async (name) => {
     const data = await modelsApi.select(name);
     setModel(data.current);
@@ -68,8 +85,9 @@ export function AppProvider({ children }) {
     setUser(account);
     setModel(account.model);
     loadBudget();
+    refreshPersonas();
     if (await refreshStatus()) await refreshModels();
-  }, [loadBudget, refreshModels, refreshStatus]);
+  }, [loadBudget, refreshModels, refreshPersonas, refreshStatus]);
 
   const logout = useCallback(async () => {
     try {
@@ -101,10 +119,11 @@ export function AppProvider({ children }) {
   }, [refreshStatus]);
 
   const value = useMemo(() => ({
-    ready, user, ollama, models, model, modelInstalled, context, conversations,
-    setContext, setModel, refreshStatus, refreshModels, refreshConversations, chooseModel, startSession, logout,
-  }), [ready, user, ollama, models, model, modelInstalled, context, conversations,
-    refreshStatus, refreshModels, refreshConversations, chooseModel, startSession, logout]);
+    ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona,
+    setContext, setModel, refreshStatus, refreshModels, refreshConversations, refreshPersonas,
+    chooseModel, choosePersona, startSession, logout,
+  }), [ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona,
+    refreshStatus, refreshModels, refreshConversations, refreshPersonas, chooseModel, choosePersona, startSession, logout]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
