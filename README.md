@@ -16,7 +16,10 @@ is an HR assistant, centred on employee onboarding.
 - **Personas**: switch the assistant's role (onboarding buddy, recruiter, senior HR...) while chatting
 - **Runtime switching**: change model, persona, temperature, seed or answer length without restarting
 - **Agent with tools** ([A1], ReAct): the model decides by itself when to search the web or read a page,
-  with no command needed from the user
+  with no command needed from the user; every step (thought, tool, result) is shown: dimmed lines in the
+  terminal, a "Reasoning" panel under the answer in the web interface
+- **Private by design**: the model, the chats and the documents stay on the machine; the only thing that
+  leaves it is a web search, and personal details are removed from it first ([T3], see below)
 - **Semantic cache** ([A6]): a question that means the same as an earlier one is answered instantly, with
   no model call
 - **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
@@ -32,7 +35,8 @@ is an HR assistant, centred on employee onboarding.
 - **Configurable via `.env`**, with command-line overrides
 - **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
 
-How it all works, module by module: [docs/Sensai_overview.md](docs/Sensai_overview.md).
+The use case: [docs/Scenario.md](docs/Scenario.md). The user stories of each feature:
+[docs/user_stories/](docs/user_stories/).
 
 ## Requirements
 
@@ -92,7 +96,10 @@ docker compose down                          # stop (add -v to also delete the v
 
 ## Configuration
 
-Edit `.env`. Every variable has a default in the code, so a short file is enough:
+Edit `.env` (created by `install.sh` from `.env.example`). Every variable has a default in the code, so a
+short file is enough. It is read from the project root whatever the current folder, before any module
+reads its settings (`back/Runtime/Env.py`), and a variable already set in the shell or by Docker wins
+over the file:
 
 ```env
 MODEL=llama3.1
@@ -107,7 +114,7 @@ SYSTEM_PROMPT_PATH=back/config/system_prompt.txt
 | Context ([M2]) | `CONTEXT_TOKEN_BUDGET` (4000), `CONTEXT_THRESHOLD_RATIO` (0.8), `CONTEXT_KEEP_LAST_N` (10) |
 | Token limit | `TOKEN_LIMIT_ACTION` (`block` or `continue`), `SHOW_TOKEN_USAGE` |
 | Agent ([A1]) | `AGENT_TOOLS`, `AGENT_MAX_STEPS` (4), `AGENT_TEMPERATURE`, `AGENT_SHOW_ACTIVITY`, `AGENT_TOOLS_PATH` |
-| Web search | `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` (only the engine you use) |
+| Web search ([T3]) | `AGENT_WEB_TOOLS` (`false` = nothing leaves the machine), `SEARCH_ENGINE` (`tavily`, `brave` or `exa`), `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` (only the engine you use) |
 | Cache ([A6]) | `CACHE_ENABLED`, `CACHE_EMBED_MODEL`, `CACHE_SIMILARITY` (0.92), `CACHE_TTL_HOURS` (168), `CACHE_MAX_ENTRIES` (500), `CACHE_SCOPE` (`user`), `CACHE_CONTEXT_FREE_ONLY` |
 | RAG ([R1]) | see the RAG section below |
 
@@ -175,8 +182,30 @@ A message that needs no tool costs **one** model call.
 ```
 You: Qui est le PDG de Renault ?
   · Searching the web: PDG Renault
+  · result: [1] Renault Group : direction ... https://...
 Assistant: D'après les résultats trouvés (https://...), ...
 ```
+
+Each step of the loop is shown (`AGENT_SHOW_ACTIVITY=false` hides it): in the terminal, one dimmed line per
+tool call and per result; in the web interface, a "Reasoning · n tool calls" line under the answer, that
+opens on the thought, the action and the result of each step (results cut at 1,500 characters). The model is
+asked to write one short sentence before a tool call (what it looks for, and why); small models often skip
+it, the actions and results are shown anyway. The trace is shown live: it is not saved with the answer.
+
+### What leaves the machine ([T3])
+
+The model, the conversations and the documents never leave the machine. The web tools are the only
+exception: `search_internet` sends a query to Brave, Tavily or Exa, `read_webpage` opens an address. The model
+writes them itself, so `back/Tools/privacy.py` checks them first:
+
+- removed from every query: e-mail addresses, phone numbers, French social security numbers, IBANs, card
+  numbers (Luhn check), and the logged-in user's id and e-mail;
+- a query made only of personal details is not sent; a page whose address holds one is not opened;
+- the model is told what was removed and the query actually sent, and so is the user (in the trace);
+- the tool guidance tells the model to search for the general rule, never for a person;
+- `AGENT_WEB_TOOLS=false` removes the web tools: nothing is sent at all, leave requests still work.
+
+A name written in full in a query is not detected (only the account id is): that case relies on the guidance.
 
 - Tools are declared in `back/Tools/tools.json` (`search_internet`, `read_webpage`).
 - Greetings and thanks are answered without offering tools.
@@ -255,7 +284,7 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
 
 - Log in with an account created in the CLI (its email or its user id).
 - Answers stream word by word; the gauge under the composer shows the context used against
-  `CONTEXT_TOKEN_BUDGET`.
+  `CONTEXT_TOKEN_BUDGET`. When the agent used tools, "Reasoning" above the answer opens its steps.
 - Model, persona, temperature and answer length are changed live, with the same checks as `/model`,
   `/persona` and `/settings` (persona: sidebar and Settings; the chat history is kept).
 - History: search, sort, rename, delete (also from the "⋯" menu of each recent chat in the sidebar).
@@ -391,9 +420,9 @@ sensai/
 │   ├── Web/                  # FastAPI app, sessions, SSE output, one route file per domain
 │   ├── Commands.py           # Session state and the slash commands
 │   ├── Memories/             # SQLite: users, conversations, history, compression, token limit
-│   ├── Runtime/              # personas, models, settings and parameters
+│   ├── Runtime/              # .env loading, personas, models, settings and parameters
 │   ├── Agents/               # ReAct loop, tool registry, router, engine, tool providers
-│   ├── Tools/                # tools.json, web search, page reader
+│   ├── Tools/                # tools.json, web search, page reader, privacy filter
 │   ├── Cache/                # semantic cache: storage, policy, chat glue
 │   ├── Export/               # [X3] JSON / Markdown / PDF export (fpdf2, Noto Sans font) and public links
 │   ├── rag/                  # loader, chunker, embeddings, store, retriever
@@ -438,10 +467,15 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 ## Known limits
 
 - Everything was tested against a fake Ollama: the real behaviour depends on the model.
+- The privacy filter catches patterns (e-mail, phone, social security number, IBAN, card) and the account id,
+  not a name written in full.
+- The reasoning trace is not saved: after a reload, the answer is shown without it.
+- There is no HR view yet: each employee sees only their own leave requests (`/leaves`).
 - Tools and their instructions add about 600 tokens to a message when they are offered.
 - Very small models can still get dates wrong or ignore a search result.
 - The persona is not stored per conversation; the persistent profile ([M1]) is not done yet.
 
 ## Roadmap
 
-Planned or open: guardrails, a persistent user profile, more tools for the agent, and the `[TEST]` controls of the web interface.
+Planned or open: input/output guardrails, a persistent user profile, an HR view of the leave requests, and the
+`[TEST]` controls of the web interface.

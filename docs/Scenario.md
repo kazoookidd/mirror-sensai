@@ -23,36 +23,64 @@ lit. Résultat : les salariés attendent, et les RH perdent du temps.
 
 ## Pourquoi un assistant qui tourne en local
 
-Les questions sont personnelles (mariage, décès, salaire). Elles ne doivent
-pas être envoyées à un service extérieur : l'assistant fonctionne donc sur la
-machine de l'entreprise.
+Les questions sont personnelles (mariage, décès, salaire). Le modèle, les
+conversations et les documents RH restent donc sur la machine de
+l'entreprise : le modèle tourne avec Ollama, tout est stocké dans une base
+SQLite locale.
 
 Ce choix a un coût : la réponse prend quelques secondes. Ce n'est pas gênant
 ici, car Sophie pose une question ponctuelle et attend déjà bien plus
 longtemps une réponse des RH.
 
+### La seule chose qui sort : la recherche web
+
+Pour une information que les documents n'ont pas (un barème mis à jour, une
+loi récente), l'agent peut chercher sur le web. C'est la seule donnée qui
+quitte la machine, et elle est contrôlée :
+
+- la requête est écrite par le modèle, qui reçoit la consigne de chercher la
+  règle générale (« congé mariage durée code du travail »), jamais la
+  situation d'une personne ;
+- avant l'envoi, le code retire de la requête les e-mails, numéros de
+  téléphone, numéros de sécurité sociale, IBAN, numéros de carte, ainsi que
+  l'identifiant et l'e-mail de l'utilisateur connecté
+  (`back/Tools/privacy.py`). Une page dont l'adresse contient l'une de ces
+  données n'est pas ouverte ;
+- le modèle et l'utilisateur voient ce qui a été retiré, dans le panneau
+  « Reasoning » de la réponse ;
+- `AGENT_WEB_TOOLS=false` supprime les outils web : plus rien ne sort.
+
+Limite assumée : un nom écrit en toutes lettres dans la requête n'est pas
+détecté (seul l'identifiant du compte l'est). La consigne donnée au modèle
+est la seule protection dans ce cas.
+
 ## L'histoire de Sophie
 
 1. **Elle se connecte** et retrouve sa conversation de la semaine dernière.
 2. **Elle pose sa question** : « Je me marie en mars, j'ai droit à combien de
-   jours ? » L'assistant répond et indique dans quel document il a trouvé
-   l'information, pour qu'elle puisse vérifier.
+   jours ? » L'assistant répond à partir des documents RH indexés et cite le
+   document entre crochets (`[loi_conge_mariage_pacs.md]`), pour qu'elle
+   puisse vérifier.
 3. **Elle continue la discussion** (congés, télétravail, accord d'entreprise).
    Même après de nombreux échanges, l'assistant se souvient de l'essentiel,
-   comme son mariage en mars.
+   comme son mariage en mars : les anciens messages sont résumés, les faits
+   (dates, chiffres) sont gardés.
 4. **Elle fait sa demande** : « Je pose du 3 au 7 novembre pour des
-   vacances. » L'assistant comprend la phrase et enregistre la demande, sans
-   formulaire à remplir.
-5. **Marc retrouve la demande** dans sa liste, avec les dates et le nom de
-   Sophie, sans mail à relire.
+   vacances. » L'agent comprend la phrase, prépare la demande et
+   **s'arrête** : il lui montre le type, les dates et le motif. Rien n'est
+   enregistré tant qu'elle n'a pas confirmé (bouton Confirm, ou `/confirm`).
+5. **La demande est enregistrée** à son nom, avec les dates et le motif
+   affichés, et un numéro. Sophie la retrouve avec `/leaves`.
 
 ## Où on en est
 
 - **Faits :** connexion et historique des conversations, mémoire des longues
-  discussions, enregistrement des demandes de congés.
-- **En cours :** les réponses à partir des documents de l'entreprise.
-- **Pas encore :** une vraie interface pour les RH.
+  discussions, réponses à partir des documents de l'entreprise (avec la
+  source), demandes de congés confirmées par le salarié, recherche web
+  protégée, interface web.
+- **Pas encore :** l'écran de Marc. Les demandes sont bien enregistrées en
+  base avec le nom du salarié, mais il n'existe pas encore de vue RH qui les
+  liste toutes : aujourd'hui, chaque salarié ne voit que les siennes.
 
-Avant la présentation : terminer les réponses sur les documents et préparer
-des captures d'écran de secours, au cas où le modèle ne répondrait pas bien en
-direct.
+Avant la présentation : préparer des captures d'écran de secours, au cas où le
+modèle ne répondrait pas bien en direct.
