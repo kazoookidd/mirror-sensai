@@ -6,9 +6,12 @@ import { Button } from "../components/ui/Button/Button.jsx";
 import { Icon } from "../components/ui/Icon/Icon.jsx";
 import { Dropdown } from "../components/ui/Dropdown/Dropdown.jsx";
 import { ModelSelect } from "../features/ollama/ModelSelect/ModelSelect.jsx";
+import { PersonaSelect } from "../features/personas/PersonaSelect/PersonaSelect.jsx";
 import { OllamaStatus } from "../features/ollama/OllamaStatus/OllamaStatus.jsx";
 import { useApp } from "../context/AppContext.jsx";
+import { useConversationActions } from "../features/history/useConversationActions.js";
 import { cx } from "../lib/cx.js";
+import { RecentChat } from "./RecentChat.jsx";
 import { SECTIONS } from "./sections.js";
 import styles from "./Sidebar.module.css";
 
@@ -18,6 +21,7 @@ export function Sidebar() {
   const { user, conversations, refreshConversations, logout } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
+  const actions = useConversationActions();
   const openAccount = (tab) => navigate(`/${tab}`, { state: { background: location } });
   const menu = [
     { heading: user.user_id },
@@ -54,17 +58,14 @@ export function Sidebar() {
         {conversations.length === 0 && <p className={styles.empty}>No chats yet.</p>}
         <ul className={styles.recentList}>
           {conversations.slice(0, RECENT_COUNT).map((conversation) => (
-            <li key={conversation.id}>
-              <NavLink to={`/chat/${conversation.id}`} className={styles.recentItem} title={conversation.title}>
-                {conversation.title}
-              </NavLink>
-            </li>
+            <RecentChat key={conversation.id} conversation={conversation} actions={actions} />
           ))}
         </ul>
       </div>
 
       <div className={styles.footer}>
         <ModelSelect placement="top" block />
+        <PersonaSelect placement="top" block />
         <OllamaStatus className={styles.status} />
         <Dropdown block placement="top" items={menu} trigger={({ open, toggle }) => (
           <button type="button" className={cx(styles.account, open && styles.accountOpen)}

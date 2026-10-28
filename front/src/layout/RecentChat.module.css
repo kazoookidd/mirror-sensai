@@ -1,0 +1,46 @@
+.item {
+  position: relative;
+}
+
+.link {
+  display: block;
+  height: 32px;
+  padding: 0 36px 0 var(--spacing-3);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.link:hover,
+.item:focus-within .link {
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+}
+
+.link[aria-current="page"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-default);
+}
+
+.more {
+  position: absolute;
+  top: 0;
+  right: 2px;
+}
+
+.trigger {
+  width: 28px;
+  height: 32px;
+  opacity: 0;
+}
+
+.item:hover .trigger,
+.trigger:focus-visible,
+.open {
+  opacity: 1;
+}
