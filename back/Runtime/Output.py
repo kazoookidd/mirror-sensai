@@ -60,3 +60,6 @@ class CliOutput:
 
     def context(self, context_tokens: int, budget: int) -> None:
         """Size of the context sent this turn. The terminal does not show it."""
+
+    def confirmation(self, title: str, plan: str) -> None:
+        """[A3] An action waits for /confirm or /cancel. The terminal already shows it in the answer."""

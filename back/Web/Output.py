@@ -66,3 +66,12 @@ class SseOutput:
 
     def context(self, context_tokens: int, budget: int) -> None:
         self._emit("context", tokens=context_tokens, budget=budget)
+
+    def confirmation(self, title: str, plan: str) -> None:
+        self._emit("confirmation", title=title, plan=plan)
+
+
+def pending_confirmation(session) -> dict | None:
+    """[A3] The action waiting for /confirm or /cancel, as the confirmation card shows it."""
+    pending = session.pending_action
+    return {"title": pending.title, "plan": pending.plan} if pending else None
