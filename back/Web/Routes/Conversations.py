@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 from Memories.Branches import branch_ids, delete_family, family, rename_family, root_of, versions
 from Memories.Conversations import get_conversation, list_conversations
 from Memories.Memory import load_history
+from rag.Attachments import list_attachments
+from Web.Output import pending_confirmation
 from Web.Sessions import WebSession, current
 
 PREVIEW_CHARS = 140
@@ -53,6 +55,9 @@ def messages(conversation_id: int, web: WebSession = Depends(current)):
         "conversation": {**conversation, "title": get_conversation(root)["title"], "root_id": root},
         "messages": load_history(conversation_id),
         "versions": versions(conversation_id),
+        "attachments": list_attachments(conversation_id),
+        # [A3] The waiting action belongs to the conversation of the last chat turn.
+        "pending": pending_confirmation(web.session) if web.session.conversation_id == conversation_id else None,
     }
 
 

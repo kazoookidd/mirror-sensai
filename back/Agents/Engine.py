@@ -16,8 +16,9 @@ Tools are part of every normal turn; the user never has to ask for them.
 
 from dataclasses import replace
 from Agents.ReAct import ReActAgent, ollama_llm
-from Agents.Router import asks_for_search, should_offer_tools
+from Agents.Router import asks_for_search, refers_to_attachments, should_offer_tools
 from Memories import Compression
+from rag.Attachments import has_attachments
 
 PREFIX = "Assistant: "
 CHARS_PER_TOKEN = 4  # same estimate as the compression module
@@ -49,6 +50,7 @@ def tools_available(session, user_input: str) -> bool:
         and session.tools_enabled
         and session.model not in _NO_TOOLS
         and should_offer_tools(user_input)
+        and not (refers_to_attachments(user_input) and has_attachments(session.conversation_id))
     )
 
 
@@ -104,6 +106,7 @@ def generate_reply(session, context: list[dict], user_input: str):
     if result.pending is not None:
         # [A3] The agent is suspended: the action waits for /confirm or /cancel.
         session.pending_action = result.pending
+        session.out.confirmation(result.pending.title, result.pending.plan)
 
     if result.answer.strip() != last_text["value"].strip():
         session.out.answer(result.answer)  # answer produced by a fallback, not streamed

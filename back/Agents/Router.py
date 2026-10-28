@@ -41,3 +41,17 @@ def asks_for_search(text: str) -> bool:
     """The user explicitly asks to look something up ("fais des recherches",
     "search the web"). Small models then need a nudge to actually call the tool."""
     return _SEARCH_REQUEST.search(text) is not None
+
+
+_ATTACHMENT_REFERENCE = re.compile(
+    r"\b(?:fichiers?|documents?|pdf|contrats?|textes?|pi[eè]ces?\s+jointes?)\s+(?:joints?|ci-joints?|attach[ée]s?|envoy[ée]s?)\b"
+    r"|\b(?:ce|cet|cette|ces|le|la|les|mon|ma|mes)\s+(?:fichiers?|documents?|pdf|pi[eè]ces?\s+jointes?)\b"
+    r"|\battached\s+(?:files?|documents?)\b|\bth(?:is|e|ese)\s+(?:files?|documents?|pdf)\b",
+    re.IGNORECASE,
+)
+
+
+def refers_to_attachments(text: str) -> bool:
+    """The user talks about "the file", "ce document", "le contrat joint". When the chat has joined
+    files, their text is already in the context: small models would otherwise try to open them with a tool."""
+    return _ATTACHMENT_REFERENCE.search(text) is not None

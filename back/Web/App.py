@@ -4,12 +4,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from Web.Routes import Auth, Chat, Command, Conversations, Documents, Models, Personas, Settings, Status
+from Web.Routes import Attachments, Auth, Chat, Command, Conversations, Documents, Export, Models, Personas, Settings, Status
 from Web.Sessions import SessionStore
 
 FRONT_DIR = Path(__file__).resolve().parents[2] / "front" / "dist"
 MISSING_FRONT = "Web interface not built: run 'npm install' then 'npm run build' in front/ (or ./install.sh)."
-ROUTERS = (Auth, Chat, Command, Conversations, Documents, Models, Personas, Settings, Status)
+ROUTERS = (Attachments, Auth, Chat, Command, Conversations, Documents, Export, Models, Personas, Settings, Status)
 
 
 class FrontFiles(StaticFiles):
