@@ -13,7 +13,7 @@ export function AppShell({ nav, scroll, children }) {
       <div className={styles.wide}><Sidebar /></div>
       <div className={styles.column}>
         <div className={styles.narrow}>
-          {nav.mobile === "back" ? <BackAppBar title={nav.title} back={nav.back} /> : <RootAppBar />}
+          {nav.mobile === "back" ? <BackAppBar title={nav.title} back={nav.back} actions={nav.actions} /> : <RootAppBar />}
         </div>
         <main className={cx(styles.main, scroll && styles.scroll, styles[direction])} {...swipe}>{children}</main>
         {nav.tabs && <div className={styles.narrow}><TabBar /></div>}
