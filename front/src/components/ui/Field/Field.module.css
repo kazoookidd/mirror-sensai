@@ -78,6 +78,19 @@
   color: var(--color-text-secondary);
 }
 
+.control:-webkit-autofill,
+.control:-webkit-autofill:hover,
+.control:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
+  box-shadow: 0 0 0 1000px var(--color-bg-surface) inset;
+  transition: background-color 99999s;
+}
+
+.control:autofill {
+  box-shadow: 0 0 0 1000px var(--color-bg-surface) inset;
+}
+
 .control[type="number"] {
   appearance: textfield;
 }
@@ -99,10 +112,10 @@
   place-content: center;
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
 }
 
 .trailing:hover {
-  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
 }

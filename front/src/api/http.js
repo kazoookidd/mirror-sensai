@@ -23,8 +23,10 @@ async function detail(response) {
 }
 
 export async function check(response, { redirect = true } = {}) {
-  if (response.ok) return response;
-  if (response.status === 401 && redirect) onUnauthorized();
+  if (response.ok)
+    return response;
+  if (response.status === 401 && redirect)
+    onUnauthorized();
   throw new ApiError(response.status, await detail(response));
 }
 

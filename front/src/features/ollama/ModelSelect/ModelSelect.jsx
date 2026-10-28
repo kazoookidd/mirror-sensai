@@ -1,9 +1,7 @@
 import { useApp } from "../../../context/AppContext.jsx";
-import { cx } from "../../../lib/cx.js";
 import { Dot } from "../../../components/ui/Badge/Badge.jsx";
-import { Dropdown } from "../../../components/ui/Dropdown/Dropdown.jsx";
 import { Icon } from "../../../components/ui/Icon/Icon.jsx";
-import styles from "./ModelSelect.module.css";
+import { Select } from "../../../components/ui/Select/Select.jsx";
 
 function plural(count) {
   return count > 1 ? "s" : "";
@@ -31,27 +29,11 @@ export function useModelItems(onChosen) {
 export function ModelSelect({ variant = "sm", align = "left", placement, block }) {
   const { model, modelInstalled, ollama, models, refreshModels } = useApp();
   const items = useModelItems();
-  const chip = variant === "chip";
 
   return (
-    <Dropdown align={align} placement={placement} block={block} items={items} trigger={({ open, toggle }) => (
-      <button
-        type="button"
-        className={cx(styles.select, styles[variant], block && styles.block, (open || !modelInstalled) && styles.attention)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Active model"
-        onClick={async () => {
-          if (!models.length && ollama.online) await refreshModels();
-          toggle();
-        }}
-      >
-        <span className={styles.value}>
-          {chip ? <Dot tone={ollama.online ? "success" : "error"} /> : <Icon name="cpu" size={16} />}
-          <span className="truncate">{model || "Model"}</span>
-        </span>
-        <Icon name="chevron-down" size={chip ? 14 : 16} />
-      </button>
-    )} />
+    <Select label="Active model" value={model || "Model"} items={items} variant={variant} align={align}
+      placement={placement} block={block} attention={!modelInstalled}
+      leading={variant === "chip" ? <Dot tone={ollama.online ? "success" : "error"} /> : <Icon name="cpu" size={16} />}
+      onOpen={() => !models.length && ollama.online && refreshModels()} />
   );
 }

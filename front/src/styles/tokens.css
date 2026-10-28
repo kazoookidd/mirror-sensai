@@ -55,7 +55,8 @@
   --gutter: var(--spacing-6);
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+.theme-dark {
   color-scheme: dark;
 
   --color-bg-app: #0f1311;

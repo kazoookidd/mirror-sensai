@@ -4,8 +4,10 @@ function parse(block) {
   let name = "message";
   const data = [];
   for (const line of block.split("\n")) {
-    if (line.startsWith("event:")) name = line.slice(6).trim();
-    else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+    if (line.startsWith("event:"))
+      name = line.slice(6).trim();
+    else if (line.startsWith("data:"))
+      data.push(line.slice(5).trim());
   }
   return { name, data: data.length ? JSON.parse(data.join("\n")) : {} };
 }

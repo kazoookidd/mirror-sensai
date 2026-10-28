@@ -1,4 +1,4 @@
-import { getJson } from "../../lib/http.js";
+import { getJson } from "./http.js";
 
 export const documents = {
   list: () => getJson("/documents"),

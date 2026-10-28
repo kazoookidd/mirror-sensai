@@ -1,8 +1,11 @@
-"""A user's conversations: list, messages, rename, delete (Memories/Conversations.py)."""
+"""A user's conversations: list, messages, rename, delete (Memories/Conversations.py).
+[X2] Branches are not listed: they are reached from their root, and renaming or
+deleting a conversation acts on all its branches (Memories/Branches.py)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from Memories.Conversations import delete_conversation, get_conversation, list_conversations, rename_conversation
+from Memories.Branches import branch_ids, delete_family, family, rename_family, root_of, versions
+from Memories.Conversations import get_conversation, list_conversations
 from Memories.Memory import load_history
 from Web.Sessions import WebSession, current
 
@@ -32,7 +35,10 @@ def _preview(history: list[dict]) -> str:
 @router.get("/conversations")
 def conversations(web: WebSession = Depends(current)):
     items = []
+    branches = branch_ids()
     for conversation in list_conversations(web.session.user_id):
+        if conversation["id"] in branches:
+            continue
         history = load_history(conversation["id"])
         if history:
             items.append({**conversation, "preview": _preview(history)})
@@ -42,20 +48,26 @@ def conversations(web: WebSession = Depends(current)):
 @router.get("/conversations/{conversation_id}/messages")
 def messages(conversation_id: int, web: WebSession = Depends(current)):
     conversation = owned(conversation_id, web)
-    return {"conversation": conversation, "messages": load_history(conversation_id)}
+    root = root_of(conversation_id)
+    return {
+        "conversation": {**conversation, "title": get_conversation(root)["title"], "root_id": root},
+        "messages": load_history(conversation_id),
+        "versions": versions(conversation_id),
+    }
 
 
 @router.patch("/conversations/{conversation_id}")
 def rename(conversation_id: int, body: Rename, web: WebSession = Depends(current)):
     owned(conversation_id, web)
-    rename_conversation(conversation_id, body.title.strip())
+    rename_family(conversation_id, body.title.strip())
     return {"ok": True}
 
 
 @router.delete("/conversations/{conversation_id}")
 def delete(conversation_id: int, web: WebSession = Depends(current)):
     owned(conversation_id, web)
-    delete_conversation(conversation_id)
-    if web.session.conversation_id == conversation_id:
+    members = family(conversation_id)
+    delete_family(conversation_id)
+    if web.session.conversation_id in members:
         web.session.conversation_id = None
-    return {"ok": True}
+    return {"ok": True, "deleted": members}

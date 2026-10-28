@@ -8,8 +8,9 @@ import styles from "./ThreadView.module.css";
 
 const STICK_DISTANCE = 160;
 
-export function ThreadView({ messages, composer, onRetry }) {
+export function ThreadView({ messages, versions, busy, offline, composer, onRetry, onEdit, onRegenerate, onVersion }) {
   const scroller = useRef(null);
+  const versionAt = Object.fromEntries(versions.map((version) => [version.index, version]));
   const stick = useRef(true);
 
   useLayoutEffect(() => {
@@ -26,10 +27,15 @@ export function ThreadView({ messages, composer, onRetry }) {
       <div ref={scroller} className={styles.thread} onScroll={onScroll}>
         <div className={styles.messages} role="log" aria-live="polite">
           {messages.map((message) => {
-            if (message.role === "user") return <UserMessage key={message.id} text={message.text} />;
+            if (message.role === "user") {
+              return <UserMessage key={message.id} message={message} busy={busy} offline={offline} onEdit={onEdit} onVersion={onVersion}
+                version={message.saved ? versionAt[message.position] : undefined} />;
+            }
             if (message.role === "failure") return <FailureBanner key={message.id} kind={message.kind} onRetry={() => onRetry(message)} />;
             if (message.role === "command") return <CommandResult key={message.id} {...message} />;
-            return <AssistantMessage key={message.id} model={message.model} text={message.text} streaming={message.streaming} />;
+            return <AssistantMessage key={message.id} model={message.model} text={message.text} busy={busy || offline}
+              streaming={message.streaming} stopped={message.stopped}
+              onRegenerate={message.saved ? () => onRegenerate(message) : undefined} />;
           })}
         </div>
       </div>

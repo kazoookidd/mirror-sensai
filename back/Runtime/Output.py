@@ -6,11 +6,30 @@ CliOutput reproduces the terminal display; another interface (the web UI)
 plugs its own Output into Session.out and receives the same events.
 """
 
+import signal
+
+from contextlib import contextmanager
 from Memories.TokenLimit import format_usage, small
 
 
 class CliOutput:
     """The terminal: every event is printed exactly as the CLI always did."""
+
+    def __init__(self):
+        self._stop = False
+
+    @contextmanager
+    def interruptible(self):
+        """[X2] During a chat turn, Ctrl+C stops the answer instead of quitting."""
+        self._stop = False
+        previous = signal.signal(signal.SIGINT, lambda *_: setattr(self, "_stop", True))
+        try:
+            yield
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+    def stopped(self) -> bool:
+        return self._stop
 
     def stream_start(self, prefix: str) -> None:
         """Called once, just before the first streamed character of an answer."""

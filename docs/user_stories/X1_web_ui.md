@@ -30,6 +30,7 @@ Critères d'acceptation :
 
 * Le menu du modèle liste les modèles installés dans Ollama (les modèles d'embedding sont exclus) et coche le modèle actif
 * La température (0 à 2) et la longueur maximale se règlent dans Settings ; une valeur refusée affiche le même message d'erreur que `/settings` dans la CLI
+* Le persona (Onboarding Buddy, Recruteur, RH Senior...) se choisit dans la barre latérale ou dans Settings, et `/persona` dans le chat met ce choix à jour
 * Les changements s'appliquent à la réponse suivante et l'historique est conservé
 
 **US-X1-04** En tant que salarié, je veux comprendre immédiatement pourquoi SENSAI ne répond pas, afin de corriger le problème sans perdre ma question.
@@ -63,7 +64,8 @@ Critères d'acceptation :
 
 * History regroupe les conversations par « Today », « Yesterday », « Earlier this week » et « Older », avec le début de la dernière réponse
 * La recherche filtre par titre et par contenu ; le tri peut être inversé
-* Sur ordinateur, Rename et Delete apparaissent au survol ; sur téléphone, en glissant la conversation vers la gauche
+* Sur ordinateur, Rename et Delete apparaissent au survol, et aussi dans le menu « ⋯ » de chaque discussion récente de la barre latérale ; sur téléphone, en glissant la conversation vers la gauche
+* Supprimer la discussion affichée (ou l'une de ses branches) ramène à une nouvelle discussion
 * Une conversation d'un autre utilisateur n'est jamais accessible (réponse 404)
 
 **US-X1-07** En tant que salarié en déplacement, je veux utiliser SENSAI sur mon téléphone ou ma tablette, en portrait comme en paysage, afin d'avoir la même aide RH partout.

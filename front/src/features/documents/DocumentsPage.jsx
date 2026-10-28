@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { AppShell } from "../../layout/AppShell.jsx";
 import { Page, PageHeader } from "../../layout/Page.jsx";
-import { documents as documentsApi } from "./api.js";
+import { documents as documentsApi } from "../../api/documents.js";
 import { ImportButton, QueryButton } from "./DocumentButtons.jsx";
 import { DropZone, EmptyBase } from "./DropZone.jsx";
 import { FileCards } from "./FileCards.jsx";

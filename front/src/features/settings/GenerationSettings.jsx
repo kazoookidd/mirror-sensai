@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { InputBox } from "../../components/ui/Field/Field.jsx";
 import { Slider } from "../../components/ui/Slider/Slider.jsx";
-import { settings as settingsApi } from "./api.js";
+import { settings as settingsApi } from "../../api/settings.js";
 import { formatDecimal } from "../../lib/format.js";
 import { Setting } from "./Section.jsx";
 import styles from "./GenerationSettings.module.css";

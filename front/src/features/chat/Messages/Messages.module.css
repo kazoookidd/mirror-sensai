@@ -1,6 +1,102 @@
 .userRow {
   display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  align-items: flex-end;
+}
+
+.userTools {
+  display: flex;
+  gap: var(--spacing-1);
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.userRow:hover .userTools,
+.userTools:focus-within,
+.userTools:has(.versions) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .userTools {
+    opacity: 1;
+  }
+}
+
+.versions {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary);
+}
+
+.versionCount {
+  min-width: 28px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.next {
+  transform: scaleX(-1);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  width: min(600px, 100%);
+  margin-left: auto;
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--color-accent-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-surface);
+  box-shadow: var(--ring-accent);
+}
+
+.editorInput {
+  width: 100%;
+  min-height: 72px;
+  max-height: 240px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 24px;
+  resize: vertical;
+}
+
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  align-items: center;
   justify-content: flex-end;
+}
+
+.editorHint {
+  display: inline-flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.stopped {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .bubble {

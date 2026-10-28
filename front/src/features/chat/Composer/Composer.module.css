@@ -58,7 +58,7 @@
 
 .knowledge {
   display: inline-flex;
-  flex-shrink: 0;
+  min-width: 0;
   gap: 6px;
   align-items: center;
   height: 32px;

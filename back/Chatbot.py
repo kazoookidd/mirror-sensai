@@ -119,6 +119,9 @@ def call_ollama(base_url: str, model: str, messages: list,
         for line in response.iter_lines():
             if not line:
                 continue
+            if out.stopped():  # [X2] the user stopped the answer: keep what arrived
+                response.close()
+                break
             chunk = json.loads(line)
 
             if "error" in chunk:
@@ -245,14 +248,19 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # lets the model use its tools when it judges it useful. A message that
     # needs no tool still costs ONE model call.
     reply = generate_reply(session, context, user_input)
+    stopped = session.out.stopped()
+    if stopped:
+        session.out.note("[answer stopped]")  # [X2] what arrived is kept, but never served from the cache
 
-    if reply is None:
+    if reply is None or (stopped and not reply.text.strip()):
         # Nothing was persisted yet for this turn, so there is nothing
         # to roll back, just let the user retry.
         return False
 
     save_message(session.conversation_id, "user", user_input)
     save_message(session.conversation_id, "assistant", reply.text)
+    if stopped:
+        return True
     remember_answer(session, cache_turn, user_input, reply.text,
                     used_tools=reply.used_tools, had_history=had_history)
 
@@ -425,7 +433,8 @@ def main():
         if handle_command(session, stripped):
             continue
 
-        chat_turn(session, user_input)
+        with session.out.interruptible():
+            chat_turn(session, user_input)
 
 
 if __name__ == "__main__":

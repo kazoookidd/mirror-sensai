@@ -4,13 +4,13 @@ import { EmptyState } from "../../components/feedback/EmptyState/EmptyState.jsx"
 import { InputBox } from "../../components/ui/Field/Field.jsx";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../../components/ui/IconButton/IconButton.jsx";
-import { useApp } from "../../context/AppContext.jsx";
 import { AppShell } from "../../layout/AppShell.jsx";
 import { Page, PageHeader } from "../../layout/Page.jsx";
-import { conversations as conversationsApi } from "./api.js";
+import { conversations as conversationsApi } from "../../api/conversations.js";
 import { dayGroup, parseUtc, plainText } from "../../lib/format.js";
 import { HistoryItem } from "./HistoryItem.jsx";
 import { HistoryRow } from "./HistoryRow.jsx";
+import { useConversationActions } from "./useConversationActions.js";
 import styles from "./HistoryPage.module.css";
 
 function grouped(items) {
@@ -24,7 +24,6 @@ function grouped(items) {
 }
 
 export function HistoryPage() {
-  const { refreshConversations } = useApp();
   const [items, setItems] = useState(null);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
@@ -34,19 +33,10 @@ export function HistoryPage() {
     conversationsApi.list().then((data) => setItems(data.conversations)).catch(() => setFailed(true));
   }, []);
 
-  const actions = {
-    rename: async (conversation, title) => {
-      await conversationsApi.rename(conversation.id, title);
-      refreshConversations();
-      setItems((list) => list.map((item) => (item.id === conversation.id ? { ...item, title } : item)));
-    },
-    remove: async (conversation) => {
-      if (!window.confirm(`Delete "${conversation.title}"? This cannot be undone.`)) return;
-      await conversationsApi.remove(conversation.id);
-      refreshConversations();
-      setItems((list) => list.filter((item) => item.id !== conversation.id));
-    },
-  };
+  const actions = useConversationActions({
+    onRenamed: (conversation, title) => setItems((list) => list.map((item) => (item.id === conversation.id ? { ...item, title } : item))),
+    onDeleted: (conversation) => setItems((list) => list.filter((item) => item.id !== conversation.id)),
+  });
 
   const visible = useMemo(() => {
     const search = query.trim().toLowerCase();

@@ -27,8 +27,7 @@
   padding: 0 var(--spacing-3);
 }
 
-.navItem,
-.recentItem {
+.navItem {
   display: flex;
   gap: var(--spacing-2);
   align-items: center;
@@ -42,14 +41,12 @@
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-.navItem:hover,
-.recentItem:hover {
+.navItem:hover {
   background: var(--color-bg-surface-2);
   color: var(--color-text-primary);
 }
 
-.navItem[aria-current="page"],
-.recentItem[aria-current="page"] {
+.navItem[aria-current="page"] {
   background: var(--color-accent-subtle);
   color: var(--color-accent-default);
 }
@@ -86,17 +83,6 @@
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
-}
-
-.recentItem {
-  display: block;
-  height: 32px;
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 32px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .footer {

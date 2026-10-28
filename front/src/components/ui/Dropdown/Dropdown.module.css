@@ -121,6 +121,7 @@
 
 .danger {
   color: var(--color-error-default);
+  --icon-color: var(--color-error-default);
 }
 
 .danger:hover,

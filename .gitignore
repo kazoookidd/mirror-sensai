@@ -6,4 +6,3 @@ __pycache__/
 __init__.py
 front/node_modules/
 front/dist/
-.playwright-mcp/

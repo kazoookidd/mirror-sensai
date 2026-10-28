@@ -7,6 +7,7 @@ queue and streams it to the browser as Server-Sent Events.
 
 import json
 import queue
+import threading
 
 ERROR_KINDS = (
     ("cannot connect", "ollama"),
@@ -31,6 +32,10 @@ def sse(name: str, data: dict) -> str:
 class SseOutput:
     def __init__(self, events: queue.Queue):
         self.events = events
+        self.stop = threading.Event()
+
+    def stopped(self) -> bool:
+        return self.stop.is_set()
 
     def _emit(self, name: str, **data) -> None:
         self.events.put((name, data))

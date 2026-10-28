@@ -14,6 +14,7 @@ Tools are part of every normal turn; the user never has to ask for them.
     served without tools: nothing breaks, the user sees one dimmed note
 """
 
+from dataclasses import replace
 from Agents.ReAct import ReActAgent, ollama_llm
 from Agents.Router import asks_for_search, should_offer_tools
 from Memories import Compression
@@ -72,6 +73,8 @@ def generate_reply(session, context: list[dict], user_input: str):
     def llm(messages, tools, temperature):
         reply = base_llm(messages, tools, temperature)
         last_text["value"] = reply.content
+        if session.out.stopped():
+            return replace(reply, tool_calls=[])
         return reply
 
     if asks_for_search(user_input):
@@ -87,6 +90,8 @@ def generate_reply(session, context: list[dict], user_input: str):
         context_char_budget=Compression.DEFAULT_BUDGET * CHARS_PER_TOKEN,
     )
     result = agent.run_messages(context)
+    if session.out.stopped():
+        return Reply(last_text["value"], result.prompt_tokens, result.completion_tokens, used_tools=bool(result.steps))
 
     if result.status == "llm_error":
         if not result.steps and _is_tools_refusal(result.answer):

@@ -195,6 +195,65 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(client.delete(f"{self.url}/api/conversations/{conversation}").status_code, 200)
         self.assertEqual(client.get(f"{self.url}/api/conversations").json()["conversations"], [])
 
+    def test_editing_or_regenerating_a_question_continues_in_a_branch(self):
+        client = self.login()
+        first = events(self.chat(client, "Q1", answer=("A1",)))[0][1]
+        root = first["id"]
+        self.chat(client, "Q2", conversation_id=root, answer=("A2",))
+        FakeOllama.scripted = [["A2 bis"]]
+        stream = events(client.post(f"{self.url}/api/chat", json={"message": "Q2 bis", "conversation_id": root, "branch_from": 2}))
+        branch = stream[0][1]
+        self.assertEqual((branch["branch"], branch["title"]), (True, "Q1"))
+        self.assertEqual(stream[-1], ("done", {"ok": True}))
+        self.assertEqual([m["content"] for m in load_history(branch["id"])], ["Q1", "A1", "Q2 bis", "A2 bis"])
+        self.assertEqual([m["content"] for m in load_history(root)], ["Q1", "A1", "Q2", "A2"])
+
+        listed = [item["id"] for item in client.get(f"{self.url}/api/conversations").json()["conversations"]]
+        self.assertIn(root, listed)
+        self.assertNotIn(branch["id"], listed)
+        data = client.get(f"{self.url}/api/conversations/{branch['id']}/messages").json()
+        self.assertEqual((data["conversation"]["title"], data["conversation"]["root_id"]), ("Q1", root))
+        self.assertEqual(data["versions"], [{"index": 2, "current": 2, "conversations": [root, branch["id"]]}])
+
+        FakeOllama.scripted = [["A2 again"]]
+        client.post(f"{self.url}/api/chat", json={"message": "Q2", "conversation_id": root, "branch_from": 2})
+        versions = client.get(f"{self.url}/api/conversations/{root}/messages").json()["versions"]
+        self.assertEqual([(v["index"], v["current"], len(v["conversations"])) for v in versions], [(2, 1, 3)])
+
+        for wrong in (1, 9):
+            response = client.post(f"{self.url}/api/chat", json={"message": "x", "conversation_id": root, "branch_from": wrong})
+            self.assertEqual(response.status_code, 422)
+        deleted = client.delete(f"{self.url}/api/conversations/{root}").json()["deleted"]
+        self.assertEqual(deleted[:2], [root, branch["id"]])
+        self.assertEqual(client.get(f"{self.url}/api/conversations/{branch['id']}/messages").status_code, 404)
+
+    def test_a_branch_is_removed_even_when_its_turn_crashes(self):
+        client = self.login()
+        root = events(self.chat(client, "Q1", answer=("A1",)))[0][1]["id"]
+        with mock.patch("Web.Routes.Chat.chat_turn", side_effect=RuntimeError("boom")), \
+             self.assertLogs("Web.Routes.Chat", level="ERROR"):
+            stream = events(client.post(f"{self.url}/api/chat", json={"message": "Q1 bis", "conversation_id": root, "branch_from": 0}))
+        self.assertEqual(stream[-2:], [("error", {"text": "Internal server error.", "kind": "other"}), ("done", {"ok": False})])
+        self.assertEqual(client.get(f"{self.url}/api/conversations/{stream[0][1]['id']}/messages").status_code, 404)
+
+    def test_a_branch_never_answers_from_the_semantic_cache(self):
+        client = self.login()
+        root = events(self.chat(client, "Q1", answer=("A1",)))[0][1]["id"]
+        seen = []
+        with mock.patch("Web.Routes.Chat.chat_turn", side_effect=lambda session, text: seen.append(session.semantic_cache)):
+            client.post(f"{self.url}/api/chat", json={"message": "Q1", "conversation_id": root, "branch_from": 0})
+            client.post(f"{self.url}/api/chat", json={"message": "Q2", "conversation_id": root})
+        self.assertEqual(seen, [False, True])
+
+    def test_a_branch_whose_answer_fails_is_removed(self):
+        client = self.login()
+        root = events(self.chat(client, "Q1", answer=("A1",)))[0][1]["id"]
+        client.put(f"{self.url}/api/model", json={"name": "other:7b"})
+        stream = events(client.post(f"{self.url}/api/chat", json={"message": "Q1 bis", "conversation_id": root, "branch_from": 0}))
+        self.assertEqual(stream[-1], ("done", {"ok": False}))
+        self.assertEqual(client.get(f"{self.url}/api/conversations/{stream[0][1]['id']}/messages").status_code, 404)
+        self.assertEqual(client.post(f"{self.url}/api/chat/stop").json(), {"stopping": False})
+
     def test_settings_use_the_cli_parsers(self):
         client = self.login()
         self.assertEqual(client.put(f"{self.url}/api/settings/temperature", json={"value": "0.3"}).status_code, 200)
@@ -210,6 +269,17 @@ class TestWebApi(unittest.TestCase):
         self.assertTrue(data["installed"])
         self.assertEqual(client.put(f"{self.url}/api/model", json={"name": "other:7b"}).json(), {"current": "other:7b"})
         self.assertEqual(client.put(f"{self.url}/api/model", json={"name": "absent"}).status_code, 404)
+
+    def test_personas_and_switching_keep_the_session(self):
+        client = self.login()
+        data = client.get(f"{self.url}/api/personas").json()
+        self.assertEqual(data["current"], "default")
+        self.assertIn("hr_onboarding", [persona["id"] for persona in data["personas"]])
+        self.assertEqual(client.put(f"{self.url}/api/persona", json={"id": "hr_senior"}).json(), {"current": "hr_senior"})
+        self.assertEqual(client.put(f"{self.url}/api/persona", json={"id": "2"}).json(), {"current": "hr_onboarding"})
+        self.assertEqual(client.put(f"{self.url}/api/persona", json={"id": "nobody"}).status_code, 404)
+        output = client.post(f"{self.url}/api/command", json={"text": "/persona"}).json()["output"]
+        self.assertIn("(hr_onboarding)", output)
 
     def test_slash_commands_run_the_cli_command(self):
         client = self.login()
