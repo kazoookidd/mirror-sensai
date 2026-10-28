@@ -36,6 +36,7 @@ from Runtime.Output import CliOutput
 from Tools.web_search import print_search_moteur, switch_search_motor
 from rag.Store import DEFAULT_DOCS_DIR, index_directory
 from Cache.Chat import get_cache, invalidate as invalidate_cache
+from Export.Formats import export
 
 HELP_TEXT = """Available commands:
   /help                         show this help
@@ -57,6 +58,7 @@ HELP_TEXT = """Available commands:
   /leaves                       list the leave requests you have filed
   /ingest [folder]              index HR documents so answers can use them (default: data/docs)
   /cache [clear]                show the semantic cache, or empty it
+  /export [md|json|pdf]         save this conversation to a file in exports/ (default: md)
   exit                          quit
 
 
@@ -64,6 +66,7 @@ Switching persona, model or any setting keeps the conversation history.
 /set is accepted as an alias of /settings.
 /conges is accepted as an alias of /leaves,
 /confirmer and /annuler as aliases of /confirm and /cancel."""
+EXPORTS_DIR = Path(__file__).resolve().parents[1] / "exports"
 
 
 @dataclass
@@ -379,6 +382,18 @@ def cache_command(session: Session, argument: str) -> None:
     print("Turn it on or off with /settings cache on|off, empty it with /cache clear.")
 
 
+def export_conversation(session: Session, argument: str) -> None:
+    try:
+        name, _, content = export(session.conversation_id, argument.lower() or "md")
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
+    EXPORTS_DIR.mkdir(exist_ok=True)
+    path = EXPORTS_DIR / name
+    path.write_bytes(content)
+    print(f"Conversation saved to {path}")
+
+
 def handle_command(session: Session, text: str) -> bool:
     """Run a slash command if `text` is one. Returns True when the input
     was a command (and must NOT be sent to the model), False otherwise."""
@@ -423,6 +438,8 @@ def handle_command(session: Session, text: str) -> bool:
         ingest_documents(argument)
     elif command == "/cache":
         cache_command(session, argument)
+    elif command == "/export":
+        export_conversation(session, argument)
     else:
         print(f"Unknown command '{command}'. Type /help to see the available commands.")
     return True
