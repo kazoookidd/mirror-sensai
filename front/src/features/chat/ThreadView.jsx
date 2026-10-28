@@ -34,7 +34,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, toolba
             }
             if (message.role === "failure") return <FailureBanner key={message.id} kind={message.kind} onRetry={() => onRetry(message)} />;
             if (message.role === "command") return <CommandResult key={message.id} {...message} />;
-            return <AssistantMessage key={message.id} model={message.model} text={message.text} busy={busy || offline}
+            return <AssistantMessage key={message.id} model={message.model} text={message.text} steps={message.steps} busy={busy || offline}
               streaming={message.streaming} stopped={message.stopped} confirmation={message.confirmation} onCommand={onCommand}
               onRegenerate={message.saved ? () => onRegenerate(message) : undefined} />;
           })}
@@ -42,7 +42,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, toolba
       </div>
       <div className={styles.dock}>
         <div className={styles.column}>{composer}</div>
-        <p className="privacy-note desktop-only"><Icon name="cpu" size={14} />Local model · HR data stays on your machine</p>
+        <p className="privacy-note desktop-only"><Icon name="cpu" size={14} />Local model · chats and documents stay on this machine</p>
       </div>
     </div>
   );

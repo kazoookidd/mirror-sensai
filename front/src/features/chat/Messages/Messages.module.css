@@ -256,6 +256,105 @@
   margin-left: auto;
 }
 
+.trace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.traceToggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.traceToggle span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traceToggle:hover {
+  color: var(--color-text-primary);
+}
+
+.traceChevron,
+.traceChevronOpen {
+  flex: none;
+  transition: transform var(--transition-fast);
+}
+
+.traceChevron {
+  transform: rotate(-90deg);
+}
+
+.traceSteps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: var(--spacing-3) var(--spacing-4);
+  border-left: 2px solid var(--color-border-default);
+  list-style: none;
+}
+
+.traceStep {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.traceKind,
+.traceKindError {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.traceKind {
+  color: var(--color-text-secondary);
+}
+
+.traceKindError {
+  color: var(--color-error-default);
+}
+
+.traceText,
+.traceOutput {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.traceText {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.traceOutput {
+  max-height: 160px;
+  overflow-y: auto;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 @media (max-width: 767px) {
   .bubble {
     max-width: 280px;

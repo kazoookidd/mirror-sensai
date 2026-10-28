@@ -3,6 +3,7 @@
         "type": "function",
         "function": {
             "name": "search_internet",
+            "label": "Searching the web",
             "description": "Search the Internet for information. Use this tool for recent, current, time-sensitive, or externally verifiable information, including news, recent events, current versions, prices, and information that may have changed. Returns a list of search results containing titles, URLs, snippets, and available metadata. The search engine is selected by the application.",
             "parameters": {
                 "type": "object",
@@ -22,6 +23,7 @@
         "type": "function",
         "function": {
             "name": "read_webpage",
+            "label": "Reading the page",
             "description": "Retrieve and extract the readable text of a specific webpage. Use this tool when the content of a particular URL must be inspected in detail, for example to verify information, understand an article, or obtain details not present in search snippets.",
             "parameters": {
                 "type": "object",

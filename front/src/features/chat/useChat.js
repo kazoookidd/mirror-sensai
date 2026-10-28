@@ -58,6 +58,12 @@ export function useChat({ onConversation }) {
           setContext({ tokens: data.tokens, budget: data.budget });
         } else if (name === "token") {
           updateAnswer(answerId, (message) => ({ text: message.text + data.text }));
+        } else if (name === "trace") {
+          // [A1] What streamed before a tool call is the agent's thought: it moves to the trace.
+          updateAnswer(answerId, (message) => ({
+            steps: [...(message.steps ?? []), { kind: data.kind, text: data.text }],
+            ...(data.kind === "thought" && { text: "" }),
+          }));
         } else if (name === "confirmation") {
           showConfirmation(answerId, { title: data.title, plan: data.plan });
         } else if (name === "answer") {

@@ -32,14 +32,12 @@ def _is_tools_refusal(message: str) -> bool:
 
 
 def _activity_reporter(out):
-    """Discreet line under the answer so the user sees WHERE it comes from."""
+    """[A1] Every step of the loop (thought, action, observation...) goes to the output,
+    so the user sees HOW the answer was reached: dimmed lines in the terminal, the
+    "Reasoning" panel in the web UI."""
     def report(kind: str, text: str) -> None:
-        if kind == "action":
-            out.note(f"  · {text[:110]}")
-        elif kind == "note":
-            out.note(f"  · {text[:110]}")
-        elif kind == "tool_error":
-            out.note(f"  · failed: {text[:110]}")
+        if text.strip():
+            out.trace(kind, text)
     return report
 
 

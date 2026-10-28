@@ -11,6 +11,9 @@ import signal
 from contextlib import contextmanager
 from Memories.TokenLimit import format_usage, small
 
+TRACE_CHARS = 110  # one terminal line per step
+TRACE_LABELS = {"observation": "result: ", "tool_error": "failed: "}
+
 
 class CliOutput:
     """The terminal: every event is printed exactly as the CLI always did."""
@@ -48,6 +51,15 @@ class CliOutput:
     def note(self, text: str) -> None:
         """Discreet line: tool used, cache hit, a feature turned off."""
         print(small(text))
+
+    def trace(self, kind: str, text: str) -> None:
+        """[A1] One step of the agent: thought, action, observation, tool_error or note.
+        A thought is the text the model streamed before its tool call: already on screen."""
+        if kind == "thought":
+            return
+        label = TRACE_LABELS.get(kind, "")
+        line = " ".join(text.split())  # a search result spans many lines: one is enough here
+        print(small(f"  · {label}{line[:TRACE_CHARS]}"))
 
     def warning(self, text: str) -> None:
         print(text)
