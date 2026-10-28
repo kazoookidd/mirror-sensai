@@ -27,6 +27,8 @@ is an HR assistant, centred on employee onboarding.
   model switching, settings, history; phone, tablet and desktop, light and dark themes
 - **Branches and stop** ([X2]): edit a question or regenerate an answer to continue in a new branch
   (`< 1/2 >` to switch); stop an answer while it is written (Stop button, or Ctrl+C in the CLI)
+- **Export and public link** ([X3]): download a chat as Markdown, JSON or PDF (`/export` in the CLI), or
+  share a read-only copy through a link that works without logging in and expires after 7 days
 - **Configurable via `.env`**, with command-line overrides
 - **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
 
@@ -161,6 +163,7 @@ tokens: 27 in · 21 out
 | `/leaves` | list the leave requests you filed |
 | `/ingest [folder]` | index HR documents for the RAG (also empties the semantic cache) |
 | `/cache [clear]` | show the semantic cache, or empty it |
+| `/export [md\|json\|pdf]` | save the conversation to a file in `exports/` (default: Markdown) |
 | `exit` | quit |
 
 ## Agent and tools ([A1])
@@ -203,6 +206,8 @@ Leave request #7 saved for alice. See all yours with /leaves.
 
 - The action only runs on `/confirm`, with exactly the data that was shown. `/cancel`, or a new request, drops it.
 - The pending action is held on the server, in the user's session: the same in the terminal and in the web UI.
+- In the web UI the plan is shown as a card with **Confirm** and **Cancel** (they run `/confirm` and `/cancel`).
+  The card stays after a page reload, and disappears once nothing is waiting any more.
 - Safety nets: the registry refuses to run a critical tool directly, and a critical tool that does not return
   an action to confirm is treated as an error (it fails closed).
 - Never cached by the semantic cache (tools were used).
@@ -254,18 +259,24 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
 - Model, persona, temperature and answer length are changed live, with the same checks as `/model`,
   `/persona` and `/settings` (persona: sidebar and Settings; the chat history is kept).
 - History: search, sort, rename, delete (also from the "⋯" menu of each recent chat in the sidebar).
-  Documents: the files of `data/docs` and whether they are indexed.
+  Documents: the files of `data/docs`, whether they are indexed, and importing new ones (see the RAG section).
 - Typing `/` in the composer lists the slash commands with what they do; they run on the same code as
   the CLI (`POST /api/command`), and the output is shown in the chat without being saved.
 - Desktop: a left sidebar (sections, recent chats, model, Ollama status). Clicking the account opens a
   menu (Profile, Settings, Log out); Profile and Settings open in a tabbed window over the current page.
   Phones and tablets: a tab bar, with a swipe between Chat, Documents and History, and Settings and
   Profile as full pages.
+- Export and Share above the chat (in the app bar on phones and tablets): download the chat shown as
+  Markdown, JSON or PDF, or create a public link (`#/share/<token>`). The link opens without logging in,
+  read only, and shows a copy of the chat as it was when it was shared; it expires after 7 days, and
+  "Stop sharing" or deleting the chat turns it off at once. It never shows who shared it. The server only
+  listens on this machine by default, so the link opens on this machine (or your network, if you set
+  `WEB_HOST`).
 - Light, dark or system theme.
 - The server listens on `127.0.0.1` only (`WEB_HOST`, `WEB_PORT` in `.env`).
 
-Controls marked `[TEST]` are designed but not connected yet: importing documents, querying a selection,
-sources under the answers, attaching a file, the documents toggle, the profile page, and the model used
+Controls marked `[TEST]` are designed but not connected yet: querying a selection of documents, the menu of
+each document, sources under the answers, the documents toggle, the profile page, and the model used
 by each past conversation.
 
 The front end (`front/`) is React 18 with Vite, in JavaScript (JSX). Each component has its CSS Module
@@ -273,14 +284,14 @@ next to it; only the design tokens, fonts and a few utilities are global (`src/s
 
 ```
 front/src/
-├── main.jsx, App.jsx    # entry point, routes (#/chat, #/documents, #/history, #/settings, #/profile), error screen
+├── main.jsx, App.jsx    # entry point, routes (#/chat, #/documents, #/history, #/settings, #/profile, #/share), error screen
 ├── context/             # AppContext: user, Ollama status, models, context gauge, recent chats
 ├── api/                 # every call to the backend: HTTP and streaming helpers, one file per domain
 ├── lib/                 # shared helpers: formats, theme, safe Markdown rendering
 ├── components/          # shared components: ui/ (Button, Field, Dialog...) and feedback/ (EmptyState...)
 ├── layout/              # AppShell, left sidebar, mobile app bar and tab bar, Page, slide transitions
 └── features/            # one folder per domain, with its pages and components:
-                         #   auth, chat, ollama, personas, history, documents, settings, profile, account, errors
+                         # auth, chat, export, ollama, personas, history, documents, settings, profile, account, errors
 ```
 
 Front tests (Vitest, no server or Ollama needed) sit next to the file they test:
@@ -312,6 +323,21 @@ Indexing .../data/docs... (can take a minute the first time)
 
 Run `/ingest` again after adding, editing or deleting documents: only changed files are
 processed again, and deleted files are removed from the index.
+
+In the web interface, **Documents > Import a document** (or a drop on the dashed zone) saves `.txt`, `.md` or
+`.pdf` files of up to 10 MB in `data/docs` and runs the same indexing as `/ingest`, on this machine. A file
+with no readable text (a scanned PDF) is refused; if Ollama does not answer, the file is kept and indexed by
+the next import or `/ingest`. Any logged-in user can import: the base is shared by every account. Under
+Docker, `data/docs` is the `sensai_docs` volume, so imported files survive a rebuild.
+
+**Files joined to one chat**: the paperclip of the composer joins `.txt`, `.md` or `.pdf` files (10 MB at most)
+to the current chat only. They go through the same pipeline but are stored apart (`rag/Attachments.py`):
+nobody else sees them, they never enter the shared base, the branches of the chat keep them, and deleting
+the chat deletes them. At each question, their passages are ranked by similarity and added, without the
+score threshold of the base, until 60 % of the free context is used, then given in file order: a small file
+goes in whole (so "summarize the attached file" works), a big one gives its closest passages. A chat with
+joined files never uses the semantic cache, and a question about "the file" or "ce document" is answered
+without tools, since the text is already in the context.
 
 ### Asking questions
 
@@ -369,6 +395,7 @@ sensai/
 │   ├── Agents/               # ReAct loop, tool registry, router, engine, tool providers
 │   ├── Tools/                # tools.json, web search, page reader
 │   ├── Cache/                # semantic cache: storage, policy, chat glue
+│   ├── Export/               # [X3] JSON / Markdown / PDF export (fpdf2, Noto Sans font) and public links
 │   ├── rag/                  # loader, chunker, embeddings, store, retriever
 │   ├── config/               # system_prompt.txt and personas/ (one JSON file per persona)
 │   ├── tests/                # Test_*.py (no real Ollama needed)

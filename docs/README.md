@@ -22,6 +22,7 @@ directly through the Ollama HTTP API. The use case is described in
 | | Temperature setting | `/temperature` |
 | X1 | Web interface: streaming chat, context gauge, model and settings, history, documents | `./start.sh --web` |
 | X2 | Branches (edit a question, regenerate an answer) and stopping an answer while it is written | web: pencil, Regenerate, Stop; CLI: Ctrl+C |
+| X3 | Export a chat (Markdown, JSON, PDF) and share it through a public link that expires after 7 days | web: Export, Share; CLI: `/export` |
 
 User stories for each feature are in [`docs/user_stories/`](user_stories/).
 

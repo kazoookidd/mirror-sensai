@@ -40,3 +40,23 @@ Critères d'acceptation :
 * Les extraits ajoutés tiennent toujours dans la place restante sous `CONTEXT_TOKEN_BUDGET` : le RAG ne déclenche jamais le blocage de la limite de tokens (il ajoute moins d'extraits, ou aucun)
 * Si Ollama ne répond pas pour les embeddings, ou si rien n'est indexé, l'assistant répond sans extraits
 * Si l'index a été construit avec un autre modèle d'embedding, un avertissement invite à relancer `/ingest` et l'assistant répond sans extraits
+
+**US-RAG-05** En tant que responsable RH, je veux ajouter un nouvel accord à la base depuis l'interface web, afin que les salariés obtiennent des réponses à jour sans que personne ne passe par le terminal.
+
+Critères d'acceptation :
+
+* Dans Documents, « Import a document » ou un dépôt sur la zone en pointillés envoie un ou plusieurs fichiers `.txt`, `.md` ou `.pdf` (10 Mo au plus)
+* Le fichier est enregistré dans `data/docs` puis indexé comme avec `/ingest` (découpage et embeddings sur la machine) ; il apparaît « Indexed » avec son nombre de morceaux
+* Une question posée ensuite dans le chat peut s'appuyer sur ce document ; le cache sémantique est vidé, car ses réponses venaient des anciens documents
+* Un nom qui sortirait du dossier, un format non pris en charge, un fichier vide, trop gros ou sans texte lisible (PDF scanné) est refusé avec un message clair, et rien n'est enregistré
+* Si Ollama ne répond pas, le fichier est gardé « Not indexed » et le message l'indique
+
+**US-RAG-06** En tant que salarié, je veux joindre mon contrat ou un courrier à une discussion, afin de poser des questions dessus sans le rendre visible aux autres ni l'ajouter à la base de l'entreprise.
+
+Critères d'acceptation :
+
+* Le trombone du champ de saisie joint un ou plusieurs fichiers `.txt`, `.md` ou `.pdf` (10 Mo au plus) ; ils s'affichent sous forme d'étiquettes au-dessus du champ et restent après un rechargement
+* Joint avant le premier message, le fichier ouvre une nouvelle discussion à son nom
+* Les réponses de cette discussion s'appuient sur le fichier (« Quel est mon préavis ? », « Résume le fichier joint ») ; une autre discussion, ou un autre compte, n'y a pas accès
+* Le fichier n'apparaît pas dans Documents et n'entre pas dans la base commune ; supprimer la discussion le supprime ; une branche (X2) garde les fichiers de sa discussion
+* Un fichier illisible (PDF scanné), un format non pris en charge ou Ollama indisponible affiche un message clair, et rien n'est gardé
