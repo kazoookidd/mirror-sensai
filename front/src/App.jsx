@@ -5,6 +5,7 @@ import { LoginPage } from "./features/auth/LoginPage.jsx";
 import { ChatPage } from "./features/chat/ChatPage.jsx";
 import { DocumentsPage } from "./features/documents/DocumentsPage.jsx";
 import { ErrorBoundary } from "./features/errors/ErrorBoundary.jsx";
+import { SharedPage } from "./features/export/SharedPage.jsx";
 import { NotFoundPage } from "./features/errors/NotFoundPage.jsx";
 import { HistoryPage } from "./features/history/HistoryPage.jsx";
 import { ProfilePage } from "./features/profile/ProfilePage.jsx";
@@ -22,6 +23,13 @@ function AppRoutes() {
   const tab = location.pathname.slice(1);
   const background = wide && DIALOG_TABS.includes(tab) ? (location.state?.background ?? { pathname: "/chat" }) : null;
   const closeDialog = () => (location.state?.background ? navigate(-1) : navigate("/chat", { replace: true }));
+  if (location.pathname.startsWith("/share/")) {
+    return (
+      <Routes>
+        <Route path="/share/:token" element={<SharedPage />} />
+      </Routes>
+    );
+  }
   if (!ready) return null;
   if (!user) {
     return (

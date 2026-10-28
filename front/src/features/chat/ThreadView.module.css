@@ -5,6 +5,19 @@
   min-height: 0;
 }
 
+.toolbar {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding: var(--spacing-3) var(--gutter) 0;
+}
+
+@media (max-width: 1023px) {
+  .toolbar {
+    display: none;
+  }
+}
+
 .thread {
   display: flex;
   flex: 1;

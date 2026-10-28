@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, getJson, postJson, whenUnauthorized } from "./http.js";
+import { ApiError, download, getJson, postJson, whenUnauthorized } from "./http.js";
 
 function reply(status, body) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -37,5 +37,16 @@ describe("http", () => {
     reply(401, { detail: "Incorrect email or password." });
     await getJson("/me", { redirect: false }).catch(() => {});
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("downloads a file under the name the server gives", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("# Leave", {
+      status: 200, headers: { "Content-Disposition": 'attachment; filename="sensai-3-leave.md"' },
+    }));
+    const { name, blob } = await download("/conversations/3/export?format=md");
+    expect(name).toBe("sensai-3-leave.md");
+    expect(await blob.text()).toBe("# Leave");
+    reply(422, { detail: "This chat has no messages yet." });
+    await expect(download("/conversations/4/export")).rejects.toMatchObject({ status: 422 });
   });
 });

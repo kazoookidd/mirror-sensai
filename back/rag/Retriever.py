@@ -29,7 +29,7 @@ def _read_setting(name: str, default, cast):
         return default
 
 
-def _cosine_scores(matrix: np.ndarray, vector: list[float]) -> np.ndarray:
+def cosine_scores(matrix: np.ndarray, vector: list[float]) -> np.ndarray:
     """Cosine similarity between `vector` and each row of `matrix`."""
     query = np.asarray(vector, dtype=EMBEDDING_DTYPE)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -60,10 +60,10 @@ def retrieve(question: str, db_path: str | None = None,
     if len(vector) != matrix.shape[1]:
         logger.warning("the index was built with another embedding model, run /ingest again")
         return []
-    return _best_chunks(chunks, _cosine_scores(matrix, vector), top_k, min_score)
+    return _best_chunks(chunks, cosine_scores(matrix, vector), top_k, min_score)
 
 
-def _format_chunk(chunk: dict) -> str:
+def format_chunk(chunk: dict) -> str:
     """Chunk text preceded by its source, like [accord.pdf, p. 4]."""
     source = chunk["source"]
     if chunk["page"] is not None:
@@ -76,7 +76,7 @@ def documents_message(chunks: list[dict], max_tokens: int) -> dict | None:
     content = CONTEXT_HEADER
     added = 0
     for chunk in chunks:
-        candidate = f"{content}\n\n{_format_chunk(chunk)}"
+        candidate = f"{content}\n\n{format_chunk(chunk)}"
         if estimate_tokens(candidate) > max_tokens:
             break
         content = candidate

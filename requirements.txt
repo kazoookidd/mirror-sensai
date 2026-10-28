@@ -5,3 +5,4 @@ beautifulsoup4
 numpy
 fastapi
 uvicorn
+fpdf2

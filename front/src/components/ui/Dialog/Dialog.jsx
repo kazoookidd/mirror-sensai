@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { cx } from "../../../lib/cx.js";
 import { IconButton } from "../IconButton/IconButton.jsx";
 import styles from "./Dialog.module.css";
 
 const FOCUSABLE = "a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
 
-export function Dialog({ title, onClose, children }) {
+export function Dialog({ title, onClose, className, children }) {
   const panel = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -38,7 +39,7 @@ export function Dialog({ title, onClose, children }) {
 
   return createPortal(
     <div className={styles.overlay} onPointerDown={(event) => event.target === event.currentTarget && close.current()}>
-      <div ref={panel} className={styles.panel} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={panel} className={cx(styles.panel, className)} role="dialog" aria-modal="true" aria-label={title}>
         <IconButton icon="x" label="Close" className={styles.close} onClick={onClose} />
         {children}
       </div>

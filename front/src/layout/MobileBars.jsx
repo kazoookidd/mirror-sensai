@@ -18,13 +18,14 @@ export function RootAppBar() {
   );
 }
 
-export function BackAppBar({ title, back }) {
+export function BackAppBar({ title, back, actions }) {
   return (
     <header className={`${styles.appBar} ${styles.back}`}>
       <div className={styles.left}>
         <IconButton icon="chevron-left" label="Back" to={back} />
         <h1 className={`${styles.title} text-heading truncate`}>{title}</h1>
       </div>
+      {actions}
     </header>
   );
 }

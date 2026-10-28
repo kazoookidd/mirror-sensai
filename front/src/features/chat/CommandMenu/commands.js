@@ -15,6 +15,7 @@ export const COMMANDS = [
   { name: "/leaves", description: "List the leave requests you filed" },
   { name: "/ingest", description: "Index the HR documents of data/docs" },
   { name: "/cache", args: "[clear]", description: "Show the semantic cache, or empty it" },
+  { name: "/export", args: "[md|json|pdf]", description: "Download this chat (default: Markdown)", local: true },
 ];
 
 export function matchCommands(text) {

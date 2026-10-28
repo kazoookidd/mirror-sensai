@@ -31,11 +31,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from Cache import Chat as CacheChat
 from Memories import Database
 from Memories.Auth import create_user
-from Memories.Conversations import create_conversation
+from Memories.Conversations import create_conversation, list_conversations
 from Memories.Memory import load_history, save_message
+from rag import Attachments, Store
 from rag.Store import document_statuses
 from Server import build_web_parser
 from Web.App import FRONT_DIR, create_app
+from Web.Routes import Documents
 
 MODELS = ["m:latest", "other:7b"]
 CHAT_MODELS = ["m"]  # other:7b is listed but refused by /api/chat, like a model deleted meanwhile
@@ -66,8 +68,9 @@ class FakeOllama(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        for text in type(self).scripted.pop(0):
-            self.wfile.write((json.dumps({"message": {"content": text}, "done": False}) + "\n").encode())
+        for part in type(self).scripted.pop(0):
+            message = part if isinstance(part, dict) else {"content": part}  # a dict carries tool_calls
+            self.wfile.write((json.dumps({"message": message, "done": False}) + "\n").encode())
         self.wfile.write((json.dumps({"message": {"content": ""}, "done": True,
                                       "prompt_eval_count": 20, "eval_count": 7}) + "\n").encode())
 
@@ -300,6 +303,135 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(run("/ingest /etc").status_code, 422)
         self.assertEqual(run("bonjour").status_code, 422)
         self.assertEqual(requests.post(f"{self.url}/api/command", json={"text": "/help"}).status_code, 401)
+
+    def test_a_conversation_is_downloaded_in_each_format(self):
+        client = self.login()
+        conversation = create_conversation("alice", "Congés")
+        save_message(conversation, "user", "Combien ?")
+        save_message(conversation, "assistant", "Cinq semaines.")
+        url = f"{self.url}/api/conversations/{conversation}/export"
+        markdown = client.get(url, params={"format": "md"})
+        self.assertEqual(markdown.headers["content-disposition"], f'attachment; filename="sensai-{conversation}-conges.md"')
+        self.assertIn("## SENSAI\n\nCinq semaines.", markdown.text)
+        self.assertEqual(client.get(url, params={"format": "json"}).json()["title"], "Congés")
+        self.assertTrue(client.get(url, params={"format": "pdf"}).content.startswith(b"%PDF-"))
+        self.assertEqual(client.get(url, params={"format": "xml"}).status_code, 422)
+        self.assertEqual(client.get(f"{self.url}/api/conversations/{create_conversation('alice')}/export").status_code, 422)
+        self.assertEqual(self.login(email="bob@example.com").get(url).status_code, 404)
+        self.assertEqual(requests.get(url).status_code, 401)
+        self.assertEqual(client.post(f"{self.url}/api/command", json={"text": "/export pdf"}).status_code, 422)
+
+    def test_a_public_link_works_without_logging_in_until_it_is_turned_off(self):
+        client = self.login()
+        conversation = create_conversation("alice", "Congés")
+        save_message(conversation, "user", "Combien ?")
+        save_message(conversation, "assistant", "Cinq semaines.")
+        url = f"{self.url}/api/conversations/{conversation}/share"
+        self.assertEqual(client.get(url).json(), {"share": None})
+        share = client.post(url).json()["share"]
+        self.assertEqual(client.get(url).json()["share"], share)
+        self.assertEqual(self.login(email="bob@example.com").post(url).status_code, 404)
+        public = requests.get(f"{self.url}/api/share/{share['token']}")
+        self.assertEqual(public.status_code, 200)
+        self.assertEqual(set(public.json()), {"title", "messages", "created_at", "expires_at"})
+        self.assertNotIn("alice", public.text)
+        self.assertEqual(public.json()["messages"][1], {"role": "assistant", "content": "Cinq semaines."})
+        self.assertEqual(client.delete(url).json(), {"share": None})
+        gone = requests.get(f"{self.url}/api/share/{share['token']}")
+        self.assertEqual((gone.status_code, gone.json()["detail"]), (404, "This link does not exist or was turned off."))
+        token = client.post(url).json()["share"]["token"]
+        conn = Database.get_connection()
+        conn.execute("UPDATE shares SET expires_at = datetime('now', '-1 minute')")
+        conn.commit()
+        conn.close()
+        expired = requests.get(f"{self.url}/api/share/{token}")
+        self.assertEqual((expired.status_code, expired.json()["detail"]), (410, "This link has expired."))
+
+    def test_a_leave_request_waits_on_a_confirmation_card_until_confirm_or_cancel(self):
+        create_user("carol", "carol@example.com", "pw")
+        client = self.login(email="carol@example.com")
+        leave = {"leave_type": "paid_leave", "start_date": "2026-11-09", "end_date": "2026-11-10", "reason": ""}
+        call = {"content": "", "tool_calls": [{"function": {"name": "file_leave_request", "arguments": leave}}]}
+        stream = events(self.chat(client, "Je pose lundi et mardi", answer=(call,)))
+        cards = [data for name, data in stream if name == "confirmation"]
+        self.assertEqual([card["title"] for card in cards], ["Leave request to confirm"])
+        self.assertIn("from:   2026-11-09", cards[0]["plan"])
+        conversation = stream[0][1]["id"]
+        url = f"{self.url}/api/conversations/{conversation}/messages"
+        self.assertEqual(client.get(url).json()["pending"], cards[0])
+        other = create_conversation("carol", "Autre")
+        self.assertIsNone(client.get(f"{self.url}/api/conversations/{other}/messages").json()["pending"])
+
+        cancel = client.post(f"{self.url}/api/command", json={"text": "/cancel"}).json()
+        self.assertIn("Dropped: Leave request to confirm", cancel["output"])
+        self.assertIsNone(cancel["pending"])
+        self.assertIsNone(client.get(url).json()["pending"])
+        self.assertIsNone(client.post(f"{self.url}/api/command", json={"text": "/leaves"}).json()["pending"])
+
+    def upload(self, client, name, content):
+        return client.post(f"{self.url}/api/documents", params={"name": name}, data=content)
+
+    def test_an_imported_document_is_saved_in_the_base_and_indexed(self):
+        client = self.login()
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)), \
+                mock.patch.object(Store, "embed_documents", side_effect=lambda texts: [[1.0, 0.0]] * len(texts)), \
+                mock.patch.object(Documents, "invalidate_cache") as invalidate:
+            response = self.upload(client, "accord télétravail.md", "# Télétravail\n\nDeux jours par semaine.".encode())
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["document"]["source"], "accord télétravail.md")
+            self.assertEqual(response.json()["document"]["status"], "indexed")
+            self.assertEqual(Path(folder, "accord télétravail.md").read_text("utf-8"), "# Télétravail\n\nDeux jours par semaine.")
+            invalidate.assert_called_once()
+            listed = client.get(f"{self.url}/api/documents").json()["documents"]
+            self.assertEqual([(item["source"], item["status"]) for item in listed], [("accord télétravail.md", "indexed")])
+            Path(folder, "accord télétravail.md").unlink()
+            Store.index_directory(folder)  # its fake vectors must not reach the other tests' retrieval
+
+    def test_an_import_is_refused_when_the_file_cannot_be_a_document(self):
+        client = self.login()
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)):
+            for name in ("../evil.md", "sub/evil.md", ".hidden.md", "virus.exe", ""):
+                self.assertEqual(self.upload(client, name, b"text").status_code, 422, name)
+            self.assertEqual(self.upload(client, "empty.md", b"").json()["detail"], "The file is empty.")
+            scanned = self.upload(client, "scan.pdf", b"not a pdf")
+            self.assertEqual((scanned.status_code, scanned.json()["detail"][:30]), (422, "SENSAI could not read any text"))
+            with mock.patch.object(Documents, "MAX_UPLOAD_BYTES", 10):
+                self.assertEqual(self.upload(client, "big.md", b"x" * 11).status_code, 413)
+            self.assertEqual(list(Path(folder).iterdir()), [])
+            self.assertEqual(requests.post(f"{self.url}/api/documents", params={"name": "a.md"}, data=b"x").status_code, 401)
+
+    def test_an_import_without_ollama_keeps_the_file_to_index_later(self):
+        client = self.login()
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)), \
+                mock.patch.object(Store, "embed_documents", return_value=None):
+            response = self.upload(client, "conges.txt", b"Cinq semaines.")
+            self.assertEqual(response.status_code, 503)
+            self.assertIn("not indexed yet", response.json()["detail"])
+            listed = client.get(f"{self.url}/api/documents").json()["documents"]
+            self.assertEqual([(item["source"], item["status"]) for item in listed], [("conges.txt", "not_indexed")])
+
+    def test_a_file_joined_to_a_chat_stays_in_that_chat(self):
+        client = self.login()
+        join = lambda name, content, conversation=None: client.post(
+            f"{self.url}/api/attachments", params={"name": name, "conversation_id": conversation}, data=content)
+        with mock.patch.object(Attachments, "embed_documents", side_effect=lambda texts: [[1.0, 0.0]] * len(texts)):
+            first = join("contrat.md", "Congés : 25 jours.".encode())
+            self.assertEqual(first.status_code, 200, first.text)
+            conversation = first.json()["conversation"]
+            self.assertEqual((conversation["title"], first.json()["attachment"]["chunks"]), ("contrat.md", 1))
+            self.assertEqual(join("avenant.txt", b"Prime : 35 euros.", conversation["id"]).status_code, 200)
+            messages = client.get(f"{self.url}/api/conversations/{conversation['id']}/messages").json()
+            self.assertEqual([item["source"] for item in messages["attachments"]], ["contrat.md", "avenant.txt"])
+            self.assertEqual(self.login(email="bob@example.com").post(
+                f"{self.url}/api/attachments", params={"name": "x.md", "conversation_id": conversation["id"]}, data=b"x").status_code, 404)
+            self.assertEqual(join("../x.md", b"x").status_code, 422)
+            ids_before = {item["id"] for item in list_conversations("alice")}
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(join("scan.pdf", b"not a pdf").status_code, 422)
+            self.assertEqual({item["id"] for item in list_conversations("alice")}, ids_before)
+        with mock.patch.object(Attachments, "embed_documents", return_value=None):
+            self.assertEqual(join("contrat.md", b"x", conversation["id"]).status_code, 503)
 
     def test_status_and_front_files(self):
         self.assertEqual(requests.get(f"{self.url}/api/status").json()["ollama"], True)

@@ -114,7 +114,7 @@ class DocumentsMessageTests(unittest.TestCase):
         self.assertIn("[syd_accord_nao_2026.pdf, p. 4]\n", message["content"])
 
     def test_only_chunks_that_fit_are_added_best_first(self):
-        one_chunk = f"{Retriever.CONTEXT_HEADER}\n\n{Retriever._format_chunk(CHUNKS[0])}"
+        one_chunk = f"{Retriever.CONTEXT_HEADER}\n\n{Retriever.format_chunk(CHUNKS[0])}"
         message = Retriever.documents_message(CHUNKS, estimate_tokens(one_chunk))
         self.assertEqual(message["content"], one_chunk)
 

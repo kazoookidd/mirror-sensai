@@ -29,9 +29,10 @@ from Runtime.Parameters import (
     parse_temperature,
 )
 from Commands import Session, handle_command, select_conversation
+from rag.Attachments import SHARE_OF_ROOM, attachments_message, has_attachments
 from rag.Retriever import rag_message
 from Agents.Engine import generate_reply
-from Cache.Chat import check as check_cache, hit_note, remember as remember_answer
+from Cache.Chat import CacheTurn, check as check_cache, hit_note, remember as remember_answer
 from Cache.Policy import has_substantive_history
 from Agents.Setup import build_registry
 from Runtime.Output import CliOutput
@@ -195,10 +196,14 @@ def login_flow() -> str:
         return user["user_id"]
 
 
-def add_documents(context: list[dict], user_input: str, ollama_url: str) -> None:
-    """Add the HR documents relevant to `user_input`, within the token limit."""
+def add_documents(context: list[dict], user_input: str, ollama_url: str, conversation_id: int | None = None) -> None:
+    """Add the files joined to the conversation, then the HR documents relevant to `user_input`, within the token limit."""
     question = {"role": "user", "content": user_input}
     room = get_budget() - estimate_context_tokens(context + [question])
+    attached = attachments_message(conversation_id, user_input, int(room * SHARE_OF_ROOM), ollama_url)
+    if attached:
+        context.append(attached)
+        room -= estimate_tokens(attached["content"])
     documents = rag_message(user_input, room, ollama_url=ollama_url)
     if documents:
         context.append(documents)
@@ -217,7 +222,8 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # [A6] Semantic cache: a question that means the same as an earlier one is
     # answered from the cache, BEFORE anything costly (compression, RAG search,
     # model call). Only self-contained, non time-sensitive questions qualify.
-    cache_turn = check_cache(session, user_input)
+    # A chat with joined files never uses the cache: the answer depends on the files.
+    cache_turn = CacheTurn() if has_attachments(session.conversation_id) else check_cache(session, user_input)
     if cache_turn.hit is not None:
         session.out.answer(cache_turn.hit.answer)
         session.out.note(hit_note(cache_turn.hit))
@@ -232,7 +238,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
         session.model,
         session.ollama_url,
     )
-    add_documents(context, user_input, session.ollama_url)
+    add_documents(context, user_input, session.ollama_url, session.conversation_id)
     context.append({"role": "user", "content": user_input})
 
     # Token limit: compression had its chance, this is what is left.

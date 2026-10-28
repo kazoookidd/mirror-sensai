@@ -2,9 +2,10 @@
 POST /api/command: runs a slash command for the web session with the CLI's own
 handle_command (Commands.py) and returns what the terminal would have printed.
 
-/new and /conversations ask questions in the terminal (input()): the interface
-handles them itself. /ingest only indexes the default folder (data/docs): a path
-typed in the browser must not choose what the server reads.
+/new and /conversations ask questions in the terminal (input()), and /export
+writes a file on the server: the interface handles them itself. /ingest only
+indexes the default folder (data/docs): a path typed in the browser must not
+choose what the server reads.
 """
 
 import io
@@ -13,9 +14,10 @@ from contextlib import redirect_stdout
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from Commands import handle_command
+from Web.Output import pending_confirmation
 from Web.Sessions import WebSession, current
 
-INTERACTIVE = ("/new", "/conversations")
+INTERACTIVE = ("/new", "/conversations", "/export")
 
 router = APIRouter()
 # sys.stdout belongs to the whole process: one command captured at a time.
@@ -50,4 +52,5 @@ def command(body: CommandRequest, web: WebSession = Depends(current)):
         "output": output.getvalue().strip(),
         "model": web.session.model,
         "persona": web.session.persona["name"],
+        "pending": pending_confirmation(web.session),
     }

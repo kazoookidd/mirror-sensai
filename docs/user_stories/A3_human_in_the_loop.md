@@ -73,3 +73,12 @@ Critères d'acceptation :
   utilisateur ne peut ni la confirmer ni la voir
 - Les réponses qui présentent un plan ne sont jamais conservées par le cache
   sémantique
+
+**US-A3-05** En tant que salarié qui utilise l'interface web, je veux confirmer ou annuler une demande de congé d'un clic, afin de ne pas avoir à connaître les commandes `/confirm` et `/cancel`.
+
+Critères d'acceptation :
+
+- Quand l'agent prépare une demande, le chat affiche une carte « Leave request to confirm » avec le plan (type, dates, motif) et les boutons « Confirm » et « Cancel »
+- « Confirm » enregistre la demande (« Leave request #… saved ») et la carte disparaît ; « Cancel » l'abandonne sans rien enregistrer
+- Taper `/confirm` ou `/cancel` dans le composer a le même effet et fait aussi disparaître la carte
+- Après un rechargement de la page, la carte d'une demande encore en attente est toujours là
