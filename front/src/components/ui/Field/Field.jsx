@@ -18,7 +18,7 @@ export const Field = forwardRef(function Field({ label, id, leading, reveal, typ
   const toggle = reveal && (
     <button className={styles.trailing} type="button" onClick={() => setShown((value) => !value)}
       aria-label={shown ? "Hide password" : "Show password"}>
-      <Icon name="eye" size={20} display={16} />
+      <Icon name={shown ? "eye-off" : "eye"} size={20} display={16} />
     </button>
   );
   return (
