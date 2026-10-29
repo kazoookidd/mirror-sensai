@@ -21,6 +21,7 @@ export function AppProvider({ children }) {
   const [conversations, setConversations] = useState([]);
   const [personas, setPersonas] = useState([]);
   const [persona, setPersona] = useState("");
+  const [hrDocuments, setHrDocuments] = useState(true);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -72,22 +73,28 @@ export function AppProvider({ children }) {
     setModelInstalled(true);
   }, []);
 
-  const loadBudget = useCallback(async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const data = await settingsApi.get();
       setContext((current) => ({ ...current, budget: data.context_budget }));
+      setHrDocuments(data.hr_documents);
     } catch {
       // The gauge stays hidden until the first answer reports it.
     }
   }, []);
 
+  const switchHrDocuments = useCallback(async (on) => {
+    await settingsApi.set("documents", on ? "on" : "off");
+    setHrDocuments(on);
+  }, []);
+
   const startSession = useCallback(async (account) => {
     setUser(account);
     setModel(account.model);
-    loadBudget();
+    loadSettings();
     refreshPersonas();
     if (await refreshStatus()) await refreshModels();
-  }, [loadBudget, refreshModels, refreshPersonas, refreshStatus]);
+  }, [loadSettings, refreshModels, refreshPersonas, refreshStatus]);
 
   const logout = useCallback(async () => {
     try {
@@ -119,11 +126,12 @@ export function AppProvider({ children }) {
   }, [refreshStatus]);
 
   const value = useMemo(() => ({
-    ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona,
+    ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona, hrDocuments,
     setContext, setModel, refreshStatus, refreshModels, refreshConversations, refreshPersonas,
-    chooseModel, choosePersona, startSession, logout,
-  }), [ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona,
-    refreshStatus, refreshModels, refreshConversations, refreshPersonas, chooseModel, choosePersona, startSession, logout]);
+    chooseModel, choosePersona, switchHrDocuments, startSession, logout,
+  }), [ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona, hrDocuments,
+    refreshStatus, refreshModels, refreshConversations, refreshPersonas, chooseModel, choosePersona, switchHrDocuments,
+    startSession, logout]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

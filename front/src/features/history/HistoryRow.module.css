@@ -48,9 +48,12 @@
 
 .model {
   display: flex;
+  min-width: 0;
   gap: 6px;
   align-items: center;
   color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .date {

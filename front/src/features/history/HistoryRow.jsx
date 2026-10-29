@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../../components/ui/IconButton/IconButton.jsx";
-import { TestTag } from "../../components/feedback/TestTag/TestTag.jsx";
 import { historyDate, parseUtc, plainText } from "../../lib/format.js";
 import { EditableTitle } from "./EditableTitle.jsx";
 import styles from "./HistoryRow.module.css";
@@ -22,8 +21,8 @@ export function HistoryRow({ conversation, actions }) {
           editing={editing} onDone={(title) => { setEditing(false); if (title) actions.rename(conversation, title); }} />
         <p className={styles.preview}>{plainText(conversation.preview)}</p>
       </div>
-      <div className={styles.model} title="[TEST] The model used is not saved yet">
-        <Icon name="cpu" size={14} /><TestTag />
+      <div className={styles.model} title={conversation.model ? `Last answer written by ${conversation.model}` : "No answer from a model yet"}>
+        <Icon name="cpu" size={14} /><span className="truncate">{conversation.model ?? "-"}</span>
       </div>
       <p className={styles.date}>{historyDate(parseUtc(conversation.updated_at))}</p>
       <div className={styles.actions}>

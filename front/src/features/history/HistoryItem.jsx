@@ -27,7 +27,7 @@ export function HistoryItem({ conversation, actions }) {
         <EditableTitle className={styles.title} title={conversation.title} editing={editing}
           onDone={(title) => { setEditing(false); if (title) actions.rename(conversation, title); }} />
         <p className={styles.preview}>{plainText(conversation.preview)}</p>
-        <p className={styles.meta}>{historyDate(parseUtc(conversation.updated_at))}</p>
+        <p className={styles.meta}>{historyDate(parseUtc(conversation.updated_at))}{conversation.model && ` · ${conversation.model}`}</p>
       </div>
     </li>
   );
