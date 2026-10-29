@@ -97,7 +97,7 @@ describe("LeaveRequestsPage [M1]", () => {
 
   it("shows a one-day leave as one date", () => {
     expect(period(DATA.requests[1])).toBe("Aug 3, 2026");
-    expect(period(DATA.requests[0])).toBe("Nov 3, 2026 → Nov 6, 2026");
+    expect(period(DATA.requests[0])).toBe("Nov 3, 2026 to Nov 6, 2026");
   });
 });
 

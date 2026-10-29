@@ -35,11 +35,11 @@
 
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) 150px 220px minmax(0, 1fr) 110px 150px;
+  grid-template-columns: minmax(170px, 1fr) minmax(0, 2fr) 104px 148px;
   gap: var(--spacing-4);
-  align-items: center;
+  align-items: start;
   min-height: 64px;
-  padding: var(--spacing-2) var(--spacing-4);
+  padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -48,7 +48,10 @@
 }
 
 .head {
+  align-items: center;
   min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
   background: var(--color-bg-surface-2);
   color: var(--color-text-secondary);
   font-size: 12px;
@@ -59,9 +62,30 @@
 
 .cell {
   min-width: 0;
+  padding-top: 7px;
   color: var(--color-text-secondary);
   font-size: 13px;
   line-height: 18px;
+}
+
+.request {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 7px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.type {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.reason {
+  overflow-wrap: anywhere;
 }
 
 .employee {
@@ -83,9 +107,27 @@
 .status {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
+  gap: 4px;
+  align-items: stretch;
   min-width: 0;
+}
+
+.status > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.cardTop .status {
+  align-items: flex-end;
+}
+
+.row .employee {
+  padding-top: 6px;
+}
+
+.cancelled {
+  display: block;
+  padding-top: 5px;
 }
 
 .decidedBy {
@@ -94,7 +136,6 @@
   line-height: 14px;
 }
 
-/* The menu takes the colour of the decision, like the badges. */
 .decision_approved button {
   border-color: var(--color-success-default);
   color: var(--color-success-default);
@@ -141,16 +182,6 @@
 
 .cardReason {
   color: var(--color-text-secondary);
-}
-
-@media (max-width: 1279px) {
-  .row {
-    grid-template-columns: minmax(0, 1.2fr) 130px 200px minmax(0, 1fr) 150px;
-  }
-
-  .row > :nth-child(5) {
-    display: none;
-  }
 }
 
 @media (max-width: 767px) {
