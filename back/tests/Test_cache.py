@@ -217,7 +217,7 @@ class TestSemanticCache(CacheTestCase):
         with self.assertRaises(EmbeddingUnavailable):
             cache.embed(Q)
         self.assertEqual(len(Fake.embed_requests), n)  # no new attempt
-        self.assertIn("nomic-embed-text", cache.unavailable_reason)
+        self.assertIn(cache.embed_model, cache.unavailable_reason)
 
     def test_an_unreachable_ollama_is_only_a_miss(self):
         cache = SemanticCache("http://127.0.0.1:9")
@@ -335,7 +335,7 @@ class TestChatIntegration(CacheTestCase):
 
     def test_ingesting_documents_forgets_the_cached_answers(self):
         Fake.chat_answers = [ANSWER]
-        session = self.session()
+        session = self.session(account_role="hr")
         self.turn(session, Q)
         with mock.patch("Commands.index_directory",
                         return_value={"failed": False, "indexed": 1, "chunks": 3, "unchanged": 0, "removed": 0}), \

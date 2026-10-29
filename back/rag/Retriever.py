@@ -5,7 +5,7 @@ from Memories.Compression import estimate_tokens
 from rag.Embeddings import embed_query
 from rag.Store import EMBEDDING_DTYPE, load_chunks
 
-DEFAULT_MIN_SCORE = 0.70
+DEFAULT_MIN_SCORE = 0.50
 DEFAULT_TOP_K = 3
 # A description, not an order: "say so if they do not answer" made small models refuse
 # a leave request or a web search whenever an excerpt was found (docs/benchmarks/chat_models.md).

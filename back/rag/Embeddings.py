@@ -2,8 +2,10 @@ import logging
 import os
 import requests
 
-DEFAULT_EMBED_MODEL = "nomic-embed-text"
+DEFAULT_EMBED_MODEL = "bge-m3"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
+# Written for nomic-embed-text, kept for bge-m3: they widen its gap between the right passage
+# and an off-topic question (docs/benchmarks/embedding_models.md).
 DOCUMENT_PREFIX = "search_document: "
 QUERY_PREFIX = "search_query: "
 BATCH_SIZE = 32
