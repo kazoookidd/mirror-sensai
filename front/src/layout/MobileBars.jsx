@@ -3,7 +3,8 @@ import { Brand } from "../components/ui/Brand/Brand.jsx";
 import { Icon } from "../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../components/ui/IconButton/IconButton.jsx";
 import { ModelSelect } from "../features/ollama/ModelSelect/ModelSelect.jsx";
-import { SECTIONS } from "./sections.js";
+import { useApp } from "../context/AppContext.jsx";
+import { sectionsFor } from "./sections.js";
 import styles from "./MobileBars.module.css";
 
 export function RootAppBar() {
@@ -31,12 +32,13 @@ export function BackAppBar({ title, back, actions }) {
 }
 
 export function TabBar() {
+  const { user } = useApp();
   return (
     <nav className={styles.tabBar} aria-label="Main navigation">
-      {SECTIONS.map((section) => (
+      {sectionsFor(user).map((section) => (
         <NavLink key={section.id} to={section.to} className={styles.tab}>
           <Icon name={section.icon} size={22} />
-          {section.label}
+          {section.shortLabel ?? section.label}
         </NavLink>
       ))}
     </nav>

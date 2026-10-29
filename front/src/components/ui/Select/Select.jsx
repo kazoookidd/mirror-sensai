@@ -3,9 +3,10 @@ import { Dropdown } from "../Dropdown/Dropdown.jsx";
 import { Icon } from "../Icon/Icon.jsx";
 import styles from "./Select.module.css";
 
-export function Select({ label, value, leading, items, variant = "sm", align = "left", placement, block, attention, onOpen }) {
+// `floating`: the list is drawn over the page, for a Select inside a box that clips (overflow: hidden).
+export function Select({ label, value, leading, items, variant = "sm", align = "left", placement, block, floating, attention, onOpen }) {
   return (
-    <Dropdown align={align} placement={placement} block={block} items={items} trigger={({ open, toggle }) => (
+    <Dropdown align={align} placement={placement} block={block} floating={floating} items={items} trigger={({ open, toggle }) => (
       <button
         type="button"
         className={cx(styles.select, styles[variant], block && styles.block, (open || attention) && styles.attention)}

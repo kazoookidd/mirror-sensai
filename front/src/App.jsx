@@ -8,6 +8,7 @@ import { ErrorBoundary } from "./features/errors/ErrorBoundary.jsx";
 import { SharedPage } from "./features/export/SharedPage.jsx";
 import { NotFoundPage } from "./features/errors/NotFoundPage.jsx";
 import { HistoryPage } from "./features/history/HistoryPage.jsx";
+import { LeaveRequestsPage } from "./features/leaves/LeaveRequestsPage.jsx";
 import { ProfilePage } from "./features/profile/ProfilePage.jsx";
 import { SettingsPage } from "./features/settings/SettingsPage.jsx";
 import { useMediaQuery } from "./lib/useMediaQuery.js";
@@ -45,6 +46,7 @@ function AppRoutes() {
         <Route path="/chat/:id?" element={<ChatPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/leaves" element={<LeaveRequestsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/" element={<Navigate to="/chat" replace />} />

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { SECTIONS } from "./sections.js";
+import { useApp } from "../context/AppContext.jsx";
+import { sectionsFor } from "./sections.js";
 
 const SWIPE_DISTANCE = 70;
 const SWIPE_RATIO = 2;
@@ -8,7 +9,8 @@ const SWIPE_RATIO = 2;
 let lastIndex = null;
 
 export function useSlideDirection(active) {
-  const index = SECTIONS.findIndex((section) => section.id === active);
+  const sections = sectionsFor(useApp().user);
+  const index = sections.findIndex((section) => section.id === active);
   const [direction] = useState(() => {
     if (index < 0 || lastIndex === null || lastIndex === index) return "none";
     return index > lastIndex ? "forward" : "back";
@@ -22,6 +24,7 @@ export function useSlideDirection(active) {
 export function useTabSwipe(active, enabled) {
   const navigate = useNavigate();
   const start = useRef(null);
+  const sections = sectionsFor(useApp().user);
   if (!enabled)
     return {};
 
@@ -39,8 +42,8 @@ export function useTabSwipe(active, enabled) {
       start.current = null;
       if (Math.abs(dx) < SWIPE_DISTANCE || Math.abs(dx) < SWIPE_RATIO * Math.abs(dy))
         return;
-      const index = SECTIONS.findIndex((section) => section.id === active);
-      const next = SECTIONS[index + (dx < 0 ? 1 : -1)];
+      const index = sections.findIndex((section) => section.id === active);
+      const next = sections[index + (dx < 0 ? 1 : -1)];
       if (next)
         navigate(next.to);
     },

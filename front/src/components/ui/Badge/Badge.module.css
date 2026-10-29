@@ -23,6 +23,24 @@
   color: var(--color-text-secondary);
 }
 
+.accent {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-default);
+}
+
+.dot_accent {
+  background: var(--color-accent-default);
+}
+
+.danger {
+  background: var(--color-error-subtle);
+  color: var(--color-error-default);
+}
+
+.dot_danger {
+  background: var(--color-error-default);
+}
+
 .dot {
   flex-shrink: 0;
   width: 6px;
