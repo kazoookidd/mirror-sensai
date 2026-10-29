@@ -58,6 +58,94 @@ Critères d'acceptation :
 - La création demande un email et une confirmation de mot de passe
 - Les mots de passe non concordants bloquent la création du compte
 
+**US-M1-04**
+En tant que salariée, je veux décrire une fois qui je suis (poste, service,
+langue et ton préférés, consignes personnelles), afin que l'assistant en
+tienne compte à chaque réponse sans que je le répète.
+
+Critères d'acceptation :
+
+- Le profil est enregistré en base pour mon compte (table `profiles`) et retrouvé à chaque connexion, en CLI comme sur le web
+- À chaque tour, il est ajouté au message système après le prompt du persona (`[profile]` puis `[instructions]`) ; un profil vide n'ajoute rien
+- Changer de persona ou de modèle garde le profil ; une modification s'applique dès la réponse suivante, sans redémarrer
+- Un autre compte ne voit jamais mon profil
+- Le cache sémantique ne ressert pas une réponse obtenue avec un autre profil (le profil fait partie de son empreinte)
+
+**US-M1-05**
+En tant qu'utilisateur de la CLI, je veux consulter et modifier mon profil
+avec une commande, afin de ne pas avoir à ouvrir l'interface web.
+
+Critères d'acceptation :
+
+- `/profile` affiche chaque champ (ou « (not set) »), la taille estimée du texte ajouté et la façon de le modifier
+- `/profile <champ> <valeur>` enregistre un champ et garde les autres ; les noms français sont acceptés (`poste`, `service`, `langue`, `ton`)
+- `/profile <champ> clear` vide un champ, `/profile clear` vide tout le profil
+- Une valeur refusée (ton autre que `concise`/`detailed`, texte trop long) ou un champ inconnu affiche un message clair, et rien ne change
+- Au démarrage, une ligne indique si un profil est utilisé ou comment en créer un
+
+**US-M1-06**
+En tant que salariée qui utilise le web, je veux remplir mon profil dans un
+formulaire et voir exactement ce qui sera transmis au modèle, afin de garder
+la main sur ce que l'assistant sait de moi.
+
+Critères d'acceptation :
+
+- La page Profile (et l'onglet Profile du menu du compte) affiche le profil enregistré ; « Save » n'est actif que si quelque chose a changé
+- L'aperçu « Injected context » montre le texte exact envoyé au modèle et sa taille estimée
+- Un enregistrement réussi affiche « Saved » et le profil tel que le serveur l'a gardé ; un refus affiche la raison et garde la saisie
+- Les mêmes contrôles que la CLI s'appliquent (une seule fonction côté serveur)
+- Le nom du profil est retiré des recherches web, comme l'identifiant du compte (voir T3)
+
+**US-M1-07**
+En tant que nouvel employé, je veux créer mon compte moi-même depuis la page de
+connexion du web, afin d'utiliser l'assistant sans attendre que le service RH
+me crée un accès.
+
+Critères d'acceptation :
+
+- « Create an employee account » sur la page de connexion ouvre un formulaire : identifiant, e-mail, mot de passe et confirmation
+- Le compte créé est toujours un compte Employé, même si le client envoie un autre rôle ; je suis connecté aussitôt
+- L'identifiant fait 3 à 40 caractères (lettres, chiffres, `.`, `_`, `-`, sans `@`), l'e-mail est valide, le mot de passe fait au moins 8 caractères ; les deux mots de passe doivent être identiques
+- Un identifiant ou un e-mail déjà utilisé est refusé avec un message clair, et rien n'est créé
+- Je peux ensuite me connecter avec mon identifiant ou mon e-mail, sur le web comme dans la CLI
+
+**US-M1-08**
+En tant que responsable RH, je veux que chaque compte ait un rôle (RH ou
+Employé) fixé à sa création, afin de pouvoir ensuite donner des droits
+différents aux RH et aux salariés.
+
+Critères d'acceptation :
+
+- Un compte créé dans la CLI est un compte RH ; un compte créé sur le web est un compte Employé
+- Les comptes qui existaient avant l'ajout des rôles (tous créés dans la CLI) deviennent des comptes RH, sans perte de données
+- Le rôle est affiché en lecture seule dans le profil (`/profile` et page Profile) ; ni `/profile` ni le formulaire web ne peuvent le modifier
+- Le serveur connaît le rôle de chaque session (`/api/me`), base des futurs droits
+
+**US-M1-09**
+En tant que responsable RH, je veux voir toutes les demandes de congés des
+salariés au même endroit, afin de ne plus chercher les demandes dans mes mails.
+
+Critères d'acceptation :
+
+- Une page « Leave requests » liste les demandes de tous les salariés : identifiant et e-mail, type en clair, période, motif, date de dépôt, statut (en attente, annulée)
+- Recherche par salarié, e-mail ou motif, et filtres par type et par statut ; un tableau sur ordinateur, des cartes sur téléphone
+- Dans la CLI, `/leaves all` affiche la même liste
+- La page n'apparaît dans la navigation que pour un compte RH ; un compte employé reçoit un refus (403 sur le web, message dans la CLI) même s'il appelle la route lui-même
+- Le RH approuve ou refuse chaque demande (voir US-M1-10)
+
+**US-M1-10**
+En tant que responsable RH, je veux approuver ou refuser une demande de congé
+depuis la liste, afin de traiter les demandes sans quitter Sensai.
+
+Critères d'acceptation :
+
+- Dans la page « Leave requests », le statut de chaque demande est un menu : Pending, Approved, Refused ; le choix est enregistré aussitôt, avec qui a décidé et quand (« by marc » sous le statut)
+- Revenir à « Pending » annule une décision prise par erreur
+- Une demande annulée par le salarié est définitive : un simple badge, et le serveur refuse d'en décider (409)
+- Dans la CLI, `/leaves approve 3`, `/leaves refuse 3` et `/leaves pending 3` font la même chose
+- Seul un compte RH peut décider : un compte employé est refusé (403 sur le web, message dans la CLI), même en appelant la route lui-même
+- Le salarié voit la décision dans `/leaves` ; l'agent ne peut plus annuler une demande déjà approuvée ou refusée
+
 ---
 
 ## [M2] Token Budgeting & Semantic Compression

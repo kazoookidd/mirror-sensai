@@ -21,6 +21,11 @@ lit. Résultat : les salariés attendent, et les RH perdent du temps.
 - **Marc, 41 ans, seul responsable RH pour 120 salariés** : il veut moins de
   questions répétitives et des demandes de congés déjà claires.
 
+Marc a un compte **RH**, créé dans le terminal. Sophie a créé elle-même son
+compte **Employé** depuis la page de connexion du web. Le rôle est fixé à la
+création du compte et affiché dans le profil : c'est la base des droits que
+Marc aura plus tard (voir les demandes de tout le monde).
+
 ## Pourquoi un assistant qui tourne en local
 
 Les questions sont personnelles (mariage, décès, salaire). Le modèle, les
@@ -43,20 +48,24 @@ quitte la machine, et elle est contrôlée :
   situation d'une personne ;
 - avant l'envoi, le code retire de la requête les e-mails, numéros de
   téléphone, numéros de sécurité sociale, IBAN, numéros de carte, ainsi que
-  l'identifiant et l'e-mail de l'utilisateur connecté
+  l'identifiant, l'e-mail et le nom (celui de son profil) de l'utilisateur
+  connecté
   (`back/Tools/privacy.py`). Une page dont l'adresse contient l'une de ces
   données n'est pas ouverte ;
 - le modèle et l'utilisateur voient ce qui a été retiré, dans le panneau
   « Reasoning » de la réponse ;
 - `AGENT_WEB_TOOLS=false` supprime les outils web : plus rien ne sort.
 
-Limite assumée : un nom écrit en toutes lettres dans la requête n'est pas
-détecté (seul l'identifiant du compte l'est). La consigne donnée au modèle
-est la seule protection dans ce cas.
+Limite assumée : un autre nom (celui d'un collègue, ou le sien s'il n'est pas
+dans son profil) n'est pas détecté. La consigne donnée au modèle est la seule
+protection dans ce cas.
 
 ## L'histoire de Sophie
 
 1. **Elle se connecte** et retrouve sa conversation de la semaine dernière.
+   Son profil (consultante en mission, réponses courtes, « cite toujours le
+   document ») est déjà là : elle ne le répète pas, l'assistant en tient
+   compte à chaque réponse, quel que soit le persona.
 2. **Elle pose sa question** : « Je me marie en mars, j'ai droit à combien de
    jours ? » L'assistant répond à partir des documents RH indexés et cite le
    document entre crochets (`[loi_conge_mariage_pacs.md]`), pour qu'elle
@@ -70,17 +79,23 @@ est la seule protection dans ce cas.
    **s'arrête** : il lui montre le type, les dates et le motif. Rien n'est
    enregistré tant qu'elle n'a pas confirmé (bouton Confirm, ou `/confirm`).
 5. **La demande est enregistrée** à son nom, avec les dates et le motif
-   affichés, et un numéro. Sophie la retrouve avec `/leaves`.
+   affichés, et un numéro. Sophie la retrouve avec `/leaves`, et peut
+   l'annuler en le disant (« annule mon congé du 3 novembre ») : là aussi,
+   l'assistant montre la demande trouvée et attend sa confirmation.
+6. **Marc retrouve la demande** dans la page « Leave requests », réservée
+   aux comptes RH : le nom et l'e-mail de Sophie, le type, les dates, le
+   motif et le statut, sans mail à relire. Il l'**approuve** ou la
+   **refuse** d'un clic ; Sophie voit la décision avec `/leaves`.
 
 ## Où on en est
 
 - **Faits :** connexion et historique des conversations, mémoire des longues
-  discussions, réponses à partir des documents de l'entreprise (avec la
-  source), demandes de congés confirmées par le salarié, recherche web
+  discussions, profil de l'utilisateur ajouté à chaque réponse, réponses à
+  partir des documents de l'entreprise (avec la source), demandes de congés
+  confirmées (ou annulées) par le salarié, vue RH des demandes, recherche web
   protégée, interface web.
-- **Pas encore :** l'écran de Marc. Les demandes sont bien enregistrées en
-  base avec le nom du salarié, mais il n'existe pas encore de vue RH qui les
-  liste toutes : aujourd'hui, chaque salarié ne voit que les siennes.
+- **Pas encore :** Sophie n'est pas prévenue quand Marc décide : elle doit
+  consulter `/leaves`.
 
 Avant la présentation : préparer des captures d'écran de secours, au cas où le
 modèle ne répondrait pas bien en direct.

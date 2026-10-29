@@ -19,7 +19,7 @@ vers un moteur de recherche, afin de pouvoir parler de ma situation (mariage,
 santé, salaire) sans qu'elle sorte de l'entreprise.
 
 Critères d'acceptation :
-- Avant l'envoi, la requête est débarrassée des e-mails, numéros de téléphone, numéros de sécurité sociale, IBAN, numéros de carte, et de l'identifiant et de l'e-mail du compte connecté
+- Avant l'envoi, la requête est débarrassée des e-mails, numéros de téléphone, numéros de sécurité sociale, IBAN, numéros de carte, et de l'identifiant, de l'e-mail et du nom (profil [M1]) du compte connecté
 - Une requête qui ne contient que des données personnelles n'est pas envoyée ; une page dont l'adresse en contient n'est pas ouverte
 - Le modèle reçoit la liste de ce qui a été retiré (le type, jamais la valeur) et la requête réellement envoyée
 - La consigne donnée au modèle lui demande de chercher la règle générale (« congé mariage durée code du travail »), jamais la situation d'une personne

@@ -10,13 +10,15 @@ This folder holds what the README does not:
 |---|---|
 | [Scenario.md](Scenario.md) | The use case: who uses Sensai, for what, and why it runs locally |
 | [user_stories/](user_stories/) | The user stories and acceptance criteria of each feature |
+| [benchmarks/chat_models.md](benchmarks/chat_models.md) | Chat models compared on Sensai's own scenarios, on this machine |
+| [benchmarks/embedding_models.md](benchmarks/embedding_models.md) | Embedding models compared for the RAG and the semantic cache |
 
 ## Features and their user stories
 
 | Code | Feature | User stories |
 |---|---|---|
 | B1 | CLI chatbot: streaming, history, error handling | [B1_M1_M2_memory.md](user_stories/B1_M1_M2_memory.md) |
-| M1 | Accounts, persistent history, several conversations | [B1_M1_M2_memory.md](user_stories/B1_M1_M2_memory.md) |
+| M1 | Accounts, persistent history, several conversations, user profile | [B1_M1_M2_memory.md](user_stories/B1_M1_M2_memory.md) |
 | M2 | Context compression, token limit and usage | [B1_M1_M2_memory.md](user_stories/B1_M1_M2_memory.md), [M2_token_limit.md](user_stories/M2_token_limit.md) |
 | R1 | RAG over the HR documents, files joined to a chat | [R1_rag.md](user_stories/R1_rag.md) |
 | A1 | ReAct agent and its reasoning trace | [A1_react.md](user_stories/A1_react.md) |
