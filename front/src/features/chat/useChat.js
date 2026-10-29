@@ -64,6 +64,9 @@ export function useChat({ onConversation }) {
             steps: [...(message.steps ?? []), { kind: data.kind, text: data.text }],
             ...(data.kind === "thought" && { text: "" }),
           }));
+        } else if (name === "retract") {
+          // [A1] The agent calls the model again: what streamed so far is not the answer.
+          updateAnswer(answerId, () => ({ text: "" }));
         } else if (name === "confirmation") {
           showConfirmation(answerId, { title: data.title, plan: data.plan });
         } else if (name === "answer") {

@@ -15,7 +15,8 @@ Tools are part of every normal turn; the user never has to ask for them.
 """
 
 from dataclasses import replace
-from Agents.ReAct import ReActAgent, ollama_llm
+from datetime import date, timedelta
+from Agents.ReAct import ReActAgent, describe_day, ollama_llm
 from Agents.Router import asks_for_search, refers_to_attachments, should_offer_tools
 from Memories import Compression
 from rag.Attachments import has_attachments
@@ -41,6 +42,20 @@ def _activity_reporter(out):
     return report
 
 
+def with_date(context: list[dict]) -> list[dict]:
+    """The context with today's date in its system message. With tools, the tool guidance
+    carries it; without (small talk, "on est quel jour ?", a model without tools), this does.
+    It is added for the call only: the cache fingerprint must not change every day."""
+    today = date.today()
+    line = f"\n\nToday is {describe_day(today)}; tomorrow is {describe_day(today + timedelta(days=1))}."
+    context = [dict(m) for m in context]
+    if context and context[0].get("role") == "system":
+        context[0]["content"] += line
+    else:
+        context.insert(0, {"role": "system", "content": line.strip()})
+    return context
+
+
 def tools_available(session, user_input: str) -> bool:
     return bool(
         session.tools is not None
@@ -59,18 +74,22 @@ def generate_reply(session, context: list[dict], user_input: str):
     from Chatbot import Reply, call_ollama  # lazy: Chatbot imports this module
 
     def plain() -> Reply | None:
-        return call_ollama(session.ollama_url, session.model, context,
+        return call_ollama(session.ollama_url, session.model, with_date(context),
                            temperature=session.temperature, prefix=PREFIX,
-                           options=session.model_options(), out=session.out)
+                           options=session.ollama_options(), out=session.out)
 
     if not tools_available(session, user_input):
         return plain()
 
     last_text = {"value": ""}
     base_llm = ollama_llm(session.ollama_url, session.model, echo=True, prefix=PREFIX,
-                          options=session.model_options(), out=session.out)
+                          options=session.ollama_options(), out=session.out)
 
     def llm(messages, tools, temperature):
+        if last_text["value"].strip():
+            # The loop calls the model again (a tool, an empty or repeated reply): what the
+            # previous call streamed is not the answer, the interface drops it.
+            session.out.retract()
         reply = base_llm(messages, tools, temperature)
         last_text["value"] = reply.content
         if session.out.stopped():

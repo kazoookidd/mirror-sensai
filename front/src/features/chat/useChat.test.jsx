@@ -67,6 +67,15 @@ describe("useChat", () => {
     expect(answer.steps.map((step) => step.kind)).toEqual(["thought", "action", "observation"]);
   });
 
+  it("drops what streamed when the agent asks the model again", async () => {
+    streams(["conversation", { id: 5, title: "Leave" }], ["token", { text: "An old refusal." }],
+      ["trace", { kind: "note", text: "repeated an earlier answer, retrying" }], ["retract", {}],
+      ["token", { text: "The real answer." }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("How?"));
+    expect(result.current.messages[1].text).toBe("The real answer.");
+  });
+
   it("replaces an empty answer by a failure that keeps the question", async () => {
     streams(["error", { kind: "model" }], ["done", { ok: false }]);
     const { result } = setup();

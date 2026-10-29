@@ -57,6 +57,10 @@ class SseOutput:
     def note(self, text: str) -> None:
         self._emit("note", text=text.strip().lstrip("· ").strip())
 
+    def retract(self) -> None:
+        """[A1] What was streamed is not the answer (the agent calls the model again): the interface empties it."""
+        self._emit("retract")
+
     def trace(self, kind: str, text: str) -> None:
         """[A1] One step of the agent, shown in the "Reasoning" panel of the answer."""
         text = text.strip()

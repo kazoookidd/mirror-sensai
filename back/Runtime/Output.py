@@ -61,6 +61,10 @@ class CliOutput:
         line = " ".join(text.split())  # a search result spans many lines: one is enough here
         print(small(f"  · {label}{line[:TRACE_CHARS]}"))
 
+    def retract(self) -> None:
+        """[A1] What was streamed is not the answer (the agent calls the model again).
+        The terminal cannot erase it: the dimmed trace line says why a new answer follows."""
+
     def warning(self, text: str) -> None:
         print(text)
 

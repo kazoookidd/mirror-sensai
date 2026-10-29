@@ -14,7 +14,16 @@ wins over the file.
 from pathlib import Path
 from dotenv import load_dotenv
 
-ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_PATH = PROJECT_ROOT / ".env"
+
+
+def project_path(path: str) -> str:
+    """A relative path of the configuration (SYSTEM_PROMPT_PATH, PERSONAS_DIR...) read from
+    the project root when it does not exist from the current folder."""
+    if Path(path).is_absolute() or Path(path).exists():
+        return path
+    return str(PROJECT_ROOT / path)
 
 
 def load_env(path: Path = ENV_PATH) -> bool:
