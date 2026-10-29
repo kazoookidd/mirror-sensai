@@ -51,7 +51,16 @@
                 "properties": {
                     "leave_type": {
                         "type": "string",
-                        "description": "One of: paid_leave, sick_leave, marriage, bereavement, remote_work, unpaid_leave, other."
+                        "enum": [
+                            "paid_leave",
+                            "sick_leave",
+                            "marriage",
+                            "bereavement",
+                            "remote_work",
+                            "unpaid_leave",
+                            "other"
+                        ],
+                        "description": "paid_leave = congés payés, vacances, RTT; sick_leave = arrêt maladie; marriage = mariage ou Pacs; bereavement = décès d'un proche, deuil; remote_work = télétravail; unpaid_leave = congé sans solde; other = autre motif."
                     },
                     "start_date": {
                         "type": "string",
@@ -70,6 +79,27 @@
                     "leave_type",
                     "start_date",
                     "end_date"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_leave_request",
+            "label": "Preparing a leave cancellation",
+            "critical": true,
+            "description": "Prepare the cancellation of one of the user's own leave requests. Use it ONLY when the user clearly asks to cancel a leave they filed. Give the first day of that leave. This tool does NOT cancel anything: the request found is shown to the user, who must confirm. After calling it, stop: do not claim it is cancelled.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "First day of the leave to cancel, YYYY-MM-DD."
+                    }
+                },
+                "required": [
+                    "start_date"
                 ]
             }
         }
