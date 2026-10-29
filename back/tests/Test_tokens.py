@@ -273,23 +273,29 @@ class TestChatTurn(ServerTestCase):
         _, output = self.run_turn(self.make_session(), "hello")
         self.assertIn("tokens: 78 in · 9 out · context 87% (87/100)", output)
 
+    def sent_options(self) -> dict:
+        """The options of the last call, without the context window that is always sent."""
+        options = dict(FakeChatHandler.received[-1]["options"])
+        self.assertEqual(options.pop("num_ctx"), Compression.context_window(options.get("num_predict")))
+        return options
+
     def test_chat_turn_sends_the_session_temperature(self):
         self.run_turn(self.make_session(temperature=0.4), "hello")
-        self.assertEqual(FakeChatHandler.received[-1]["options"], {"temperature": 0.4})
+        self.assertEqual(self.sent_options(), {"temperature": 0.4})
 
-    def test_chat_turn_sends_no_options_on_the_model_default(self):
+    def test_chat_turn_sends_only_the_context_window_on_the_model_default(self):
+        # num_ctx is never left to Ollama's default (4,096), which would cut a longer prompt.
         self.run_turn(self.make_session(), "hello")
-        self.assertNotIn("options", FakeChatHandler.received[-1])
+        self.assertEqual(self.sent_options(), {})
 
     def test_the_session_model_options_reach_ollama(self):
         session = self.make_session(temperature=0.4, seed=42, num_predict=300)
         self.run_turn(session, "hello")
-        self.assertEqual(FakeChatHandler.received[-1]["options"],
-                         {"seed": 42, "num_predict": 300, "temperature": 0.4})
+        self.assertEqual(self.sent_options(), {"seed": 42, "num_predict": 300, "temperature": 0.4})
 
     def test_a_seed_of_zero_is_sent(self):
         self.run_turn(self.make_session(seed=0), "hello")
-        self.assertEqual(FakeChatHandler.received[-1]["options"], {"seed": 0})
+        self.assertEqual(self.sent_options(), {"seed": 0})
 
     def test_usage_line_can_be_turned_off(self):
         _, output = self.run_turn(self.make_session(show_token_usage=False), "hello")

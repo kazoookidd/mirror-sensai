@@ -22,7 +22,7 @@ from Agents.ReAct import ModelReply, ReActAgent, tool_guidance
 from Agents.Setup import build_registry
 from Agents.Tooling import Tool, ToolRegistry
 from Commands import Session
-from Runtime.Env import load_env
+from Runtime.Env import PROJECT_ROOT, load_env, project_path
 from Runtime.Output import CliOutput
 from Tools.privacy import identifiers, redact
 from Web.Output import SseOutput
@@ -58,7 +58,7 @@ class TestRedact(unittest.TestCase):
         known = identifiers("sophie.martin", "s.martin@acme.fr")
         clean, found = redact("congé de Sophie MARTIN pour mariage", known)
         self.assertEqual(clean, "congé de pour mariage")
-        self.assertEqual(found, ["your user id"])
+        self.assertEqual(found, ["your name or user id"])
         self.assertEqual(redact("marchés martiniquais", known)[1], [])  # whole words only
 
     def test_short_ids_are_not_used(self):
@@ -97,7 +97,7 @@ class TestWebTools(unittest.TestCase):
     def test_web_tools_can_be_turned_off(self):
         with mock.patch.dict(os.environ, {"AGENT_WEB_TOOLS": "false"}):
             registry = build_registry(self.session())
-        self.assertEqual(registry.names(), ["file_leave_request"])
+        self.assertEqual(registry.names(), ["file_leave_request", "cancel_leave_request"])
 
     def test_the_guidance_follows_the_tools_offered(self):
         everything = tool_guidance({"search_internet", "file_leave_request"})
@@ -165,6 +165,18 @@ class TestEnv(unittest.TestCase):
 
     def test_a_missing_file_is_not_an_error(self):
         self.assertFalse(load_env("/nonexistent/.env"))
+
+    def test_config_paths_are_found_from_any_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            here = os.getcwd()
+            os.chdir(tmp)
+            try:
+                path = project_path("back/config/system_prompt.txt")
+            finally:
+                os.chdir(here)
+        self.assertEqual(path, str(PROJECT_ROOT / "back/config/system_prompt.txt"))
+        self.assertTrue(os.path.isfile(path))
+        self.assertEqual(project_path("/abs/file"), "/abs/file")
 
 
 if __name__ == "__main__":
