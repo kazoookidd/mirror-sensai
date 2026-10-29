@@ -23,9 +23,16 @@ def init_db(db_path: str = None) -> None:
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 salt TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                role TEXT NOT NULL DEFAULT 'hr'
             )
         """)
+        # [M1] Account role, set when the account is created: "hr" in the CLI, "employee"
+        # when signing up on the web. A database made before roles existed gets the
+        # column, and its accounts (all created in the CLI) are HR accounts.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+        if "role" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'hr'")
         # A user can have several independent conversations. Each one has
         # its own message history, its own compression state, and can be
         # resumed or switched to independently of the others.
