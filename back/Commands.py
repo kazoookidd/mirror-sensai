@@ -73,7 +73,7 @@ HELP_TEXT = """Available commands:
   /profile [field [value]]      show your profile, or change one field
                                 (e.g. /profile role Consultante, /profile tone concise,
                                 /profile language clear, /profile clear to empty it)
-  /ingest [folder]              index HR documents so answers can use them (default: data/docs)
+  /ingest [folder]              HR accounts: index HR documents so answers can use them (default: data/docs)
   /cache [clear]                show the semantic cache, or empty it
   /export [md|json|pdf]         save this conversation to a file in exports/ (default: md)
   exit                          quit
@@ -111,6 +111,8 @@ class Session:
     # More options of the model, None = the model's default (see Runtime/Parameters.py)
     # [A6] answer questions that mean the same as an earlier one from the cache
     semantic_cache: bool = True
+    # [R1] search the HR documents for each question (/settings documents off to answer without them)
+    hr_documents: bool = True
     seed: int | None = None
     num_predict: int | None = None
     # Where the chat turn writes what the user sees (Runtime/Output.py)
@@ -476,8 +478,11 @@ def change_setting(session: Session, argument: str) -> None:
     print(f"{setting.name} set to {new_value}. It applies to the next answers.")
 
 
-def ingest_documents(argument: str) -> None:
-    """Index a folder of documents for the RAG."""
+def ingest_documents(session: Session, argument: str) -> None:
+    """Index a folder of documents for the RAG, for an HR account only."""
+    if session.account_role != ROLE_HR:
+        print("Error: only HR accounts can add documents to the knowledge base.")
+        return
     folder = DEFAULT_DOCS_DIR
     if argument:
         folder = Path(argument)
@@ -569,7 +574,7 @@ def handle_command(session: Session, text: str) -> bool:
     elif command in ("/profile", "/profil"):
         profile_command(session, argument)
     elif command == "/ingest":
-        ingest_documents(argument)
+        ingest_documents(session, argument)
     elif command == "/cache":
         cache_command(session, argument)
     elif command == "/export":

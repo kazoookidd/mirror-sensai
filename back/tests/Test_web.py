@@ -200,6 +200,16 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(client.delete(f"{self.url}/api/conversations/{conversation}").status_code, 200)
         self.assertEqual(client.get(f"{self.url}/api/conversations").json()["conversations"], [])
 
+    def test_the_history_shows_the_model_of_the_last_answer_and_the_documents_switch(self):
+        client = self.login()
+        conversation = events(self.chat(client, "Q1", answer=("A1",)))[0][1]["id"]
+        listed = {item["id"]: item for item in client.get(f"{self.url}/api/conversations").json()["conversations"]}
+        self.assertEqual(listed[conversation]["model"], client.get(f"{self.url}/api/me").json()["model"])
+        self.assertTrue(client.get(f"{self.url}/api/settings").json()["hr_documents"])
+        self.assertEqual(client.put(f"{self.url}/api/settings/documents", json={"value": "off"}).json(), {"name": "documents", "value": "off"})
+        self.assertFalse(client.get(f"{self.url}/api/settings").json()["hr_documents"])
+        client.put(f"{self.url}/api/settings/documents", json={"value": "on"})
+
     def test_editing_or_regenerating_a_question_continues_in_a_branch(self):
         client = self.login()
         first = events(self.chat(client, "Q1", answer=("A1",)))[0][1]
@@ -468,6 +478,41 @@ class TestWebApi(unittest.TestCase):
             Path(folder, "accord télétravail.md").unlink()
             Store.index_directory(folder)  # its fake vectors must not reach the other tests' retrieval
 
+    def test_hr_renames_and_deletes_a_document_without_embedding_it_again(self):
+        from Memories.Auth import ROLE_EMPLOYEE
+        from rag.Retriever import load_chunks
+        create_user("ines", "ines@example.com", "pw", role=ROLE_EMPLOYEE)
+        hr, employee = self.login(), self.login("ines@example.com")
+        embed = mock.patch.object(Store, "embed_documents", side_effect=lambda texts: [[1.0, 0.0]] * len(texts))
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)), \
+                embed as embedded, mock.patch.object(Documents, "invalidate_cache") as invalidate:
+            self.assertEqual(self.upload(hr, "accord.md", "# Accord\n\nDeux jours.".encode()).status_code, 200)
+            calls = embedded.call_count
+            url = f"{self.url}/api/documents"
+            self.assertEqual(employee.patch(f"{url}/accord.md", json={"name": "x.md"}).status_code, 403)
+            self.assertEqual(employee.delete(f"{url}/accord.md").status_code, 403)
+            self.assertEqual(hr.patch(f"{url}/accord.md", json={"name": "../x.md"}).status_code, 422)
+            self.assertEqual(hr.patch(f"{url}/accord.md", json={"name": "x.exe"}).status_code, 422)
+            self.assertEqual(hr.patch(f"{url}/absent.md", json={"name": "x.md"}).status_code, 404)
+
+            renamed = hr.patch(f"{url}/accord.md", json={"name": "accord télétravail.md"})
+            self.assertEqual(renamed.status_code, 200, renamed.text)
+            self.assertEqual((renamed.json()["document"]["source"], renamed.json()["document"]["status"]),
+                             ("accord télétravail.md", "indexed"))
+            self.assertEqual(embedded.call_count, calls)  # same text: the vectors are kept
+            self.assertEqual([chunk["source"] for chunk in load_chunks()[0]], ["accord télétravail.md"])
+            self.assertEqual(sorted(p.name for p in Path(folder).iterdir()), ["accord télétravail.md"])
+
+            self.upload(hr, "autre.md", b"# Autre")
+            self.assertEqual(hr.patch(f"{url}/autre.md", json={"name": "accord télétravail.md"}).status_code, 409)
+            with mock.patch.object(Store, "embed_documents", return_value=None):  # Ollama down: deleting still works
+                self.assertEqual(hr.delete(f"{url}/accord télétravail.md").json(), {"deleted": "accord télétravail.md"})
+                self.assertEqual(hr.delete(f"{url}/accord télétravail.md").status_code, 404)
+                hr.delete(f"{url}/autre.md")
+            self.assertEqual(load_chunks()[0], [])
+            self.assertEqual(list(Path(folder).iterdir()), [])
+            self.assertGreaterEqual(invalidate.call_count, 3)
+
     def test_an_import_is_refused_when_the_file_cannot_be_a_document(self):
         client = self.login()
         with tempfile.TemporaryDirectory() as folder, mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)):
@@ -480,6 +525,21 @@ class TestWebApi(unittest.TestCase):
                 self.assertEqual(self.upload(client, "big.md", b"x" * 11).status_code, 413)
             self.assertEqual(list(Path(folder).iterdir()), [])
             self.assertEqual(requests.post(f"{self.url}/api/documents", params={"name": "a.md"}, data=b"x").status_code, 401)
+
+    def test_only_hr_accounts_add_documents_to_the_shared_base(self):
+        from Memories.Auth import ROLE_EMPLOYEE
+        create_user("eve", "eve@example.com", "pw", role=ROLE_EMPLOYEE)
+        employee = self.login("eve@example.com")
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)), \
+                mock.patch.object(Store, "index_directory") as index:
+            refused = self.upload(employee, "accord.md", b"# Accord")
+            self.assertEqual(refused.status_code, 403)
+            self.assertIn("Only HR accounts", refused.json()["detail"])
+            self.assertEqual(list(Path(folder).iterdir()), [])
+            self.assertEqual(employee.get(f"{self.url}/api/documents").status_code, 200)
+            ingest = employee.post(f"{self.url}/api/command", json={"text": "/ingest"}).json()
+            self.assertIn("only HR accounts", ingest["output"])
+            index.assert_not_called()
 
     def test_an_import_without_ollama_keeps_the_file_to_index_later(self):
         client = self.login()
@@ -503,6 +563,16 @@ class TestWebApi(unittest.TestCase):
             self.assertEqual(join("avenant.txt", b"Prime : 35 euros.", conversation["id"]).status_code, 200)
             messages = client.get(f"{self.url}/api/conversations/{conversation['id']}/messages").json()
             self.assertEqual([item["source"] for item in messages["attachments"]], ["contrat.md", "avenant.txt"])
+            mine = client.get(f"{self.url}/api/attachments").json()["attachments"]
+            self.assertEqual([(item["source"], item["conversation_id"], item["conversation_title"]) for item in mine],
+                             [("avenant.txt", conversation["id"], "contrat.md"), ("contrat.md", conversation["id"], "contrat.md")])
+            others = self.login(email="bob@example.com").get(f"{self.url}/api/attachments").json()["attachments"]
+            self.assertNotIn(conversation["id"], [item["conversation_id"] for item in others])
+            avenant = mine[0]["id"]
+            self.assertEqual(self.login(email="bob@example.com").delete(f"{self.url}/api/attachments/{avenant}").status_code, 404)
+            self.assertEqual(client.delete(f"{self.url}/api/attachments/{avenant}").json(), {"deleted": avenant})
+            self.assertEqual(client.delete(f"{self.url}/api/attachments/{avenant}").status_code, 404)
+            self.assertEqual([item["source"] for item in client.get(f"{self.url}/api/attachments").json()["attachments"]], ["contrat.md"])
             self.assertEqual(self.login(email="bob@example.com").post(
                 f"{self.url}/api/attachments", params={"name": "x.md", "conversation_id": conversation["id"]}, data=b"x").status_code, 404)
             self.assertEqual(join("../x.md", b"x").status_code, 422)

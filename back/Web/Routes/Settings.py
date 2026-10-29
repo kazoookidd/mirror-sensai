@@ -21,6 +21,7 @@ def settings(web: WebSession = Depends(current)):
         "num_predict": session.num_predict,
         "ollama_url": session.ollama_url,
         "context_budget": get_budget(),
+        "hr_documents": session.hr_documents,
     }
 
 
