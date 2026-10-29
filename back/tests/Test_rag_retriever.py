@@ -160,13 +160,15 @@ class ChatTurnTests(unittest.TestCase):
         self.sent = list(context)
         return Chatbot.Reply(text="4 jours.")
 
-    def test_documents_go_right_before_the_question_and_are_not_saved(self):
+    def test_documents_go_into_the_system_message_and_are_not_saved(self):
         documents = {"role": "system", "content": "[loi.md]\n4 jours."}
         with mock.patch.object(Chatbot, "rag_message", return_value=documents), \
              contextlib.redirect_stdout(io.StringIO()):
             self.assertTrue(Chatbot.chat_turn(self.session, "Congé mariage ?"))
-        question = {"role": "user", "content": "Congé mariage ?"}
-        self.assertEqual(self.sent[-2:], [documents, question])
+        # One system message (persona, then the excerpts), then the question: a second system
+        # message right before the question stopped small models from calling their tools.
+        self.assertEqual(self.sent, [{"role": "system", "content": "Tu es RH.\n\n[loi.md]\n4 jours."},
+                                     {"role": "user", "content": "Congé mariage ?"}])
         saved = [call.args[2] for call in Chatbot.save_message.call_args_list]
         self.assertEqual(saved, ["Congé mariage ?", "4 jours."])
 

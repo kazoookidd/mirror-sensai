@@ -21,11 +21,67 @@ _SMALL_TALK = re.compile(
 )
 
 
+_DATE_QUESTION = re.compile(
+    r"\b(?:on est quel jour|quel jour (?:sommes-nous|on est|est-on|est-ce)|c'est quel jour|"
+    r"quelle (?:est la )?date (?:sommes-nous|on est|est-on|aujourd'hui)|quelle est la date|"
+    r"(?:la )?date d'aujourd'hui|on est le combien|"
+    r"what day is (?:it|today)|what(?:'s| is) (?:the )?date|today's date)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_for_date(text: str) -> bool:
+    """"On est quel jour ?": the date is in the system prompt, no tool is needed (a 1B model
+    would search the web for "jour" and answer from the results)."""
+    return _DATE_QUESTION.search(text) is not None
+
+
+# "Poser" is only said of leave: a date is enough ("je pose lundi").
+_FILE_LEAVE = re.compile(
+    r"\b(?:je|j') ?(?:pose|d[ée]pose|(?:veux|voudrais|souhaite|aimerais|vais|dois) (?:poser|d[ée]poser))\b"
+    r"|\bpose[sz]?[- ]moi\b|\bi(?:'m| am| want to| would like to|'d like to)? (?:book|booking)\b",
+    re.IGNORECASE,
+)
+_WHEN = re.compile(
+    r"\b(?:cong[ée]s?|vacances|rtt|repos|jours?|semaines?|demi-journ[ée]e|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche|demain|du \d|le \d|days?|leave|holidays?|vacation|monday|tuesday|wednesday|thursday|"
+    r"friday|saturday|sunday|tomorrow)\b",
+    re.IGNORECASE,
+)
+# "Prendre" is said of anything ("je prends le train demain"): a word of leave is needed.
+_TAKE = re.compile(
+    r"\b(?:je|j') ?(?:prends|(?:veux|voudrais|souhaite|aimerais|vais|dois) prendre)\b"
+    r"|\bi(?:'m| am| want to| would like to|'d like to)? (?:take|taking)\b",
+    re.IGNORECASE,
+)
+_LEAVE_WORD = re.compile(
+    r"\b(?:cong[ée]s?|vacances|rtt|repos|demi-journ[ée]e|journ[ée]e off|off|leave|holidays?|vacation)\b",
+    re.IGNORECASE,
+)
+
+
+# "Annule mon congé du 3 novembre", "cancel my leave on Monday"
+_CANCEL = re.compile(r"\b(?:annule[rz]?|supprime[rz]?|retire[rz]?|cancel(?:led|ling)?)\b", re.IGNORECASE)
+_REQUEST_WORD = re.compile(r"\b(?:cong[ée]s?|vacances|rtt|demandes?|absences?|leave|holidays?|vacation|day off)\b",
+                           re.IGNORECASE)
+# "Comment annuler un congé ?" asks about the rules: it keeps the HR excerpts.
+_QUESTION = re.compile(r"^\W*(?:comment|est-ce|peut-on|puis-je|pourquoi|quand|how|can i|why|when)\b", re.IGNORECASE)
+
+
+def asks_for_leave(text: str) -> bool:
+    """"Je pose du 3 au 7 novembre", "annule mon congé du 3": the user files or cancels a leave
+    request, the agent must act. HR excerpts about leave rules would only distract a small model
+    into explaining the rules (measured: qwen2.5:3b calls the tool 3/3 times without them, 0/3 with them)."""
+    return bool((_FILE_LEAVE.search(text) and _WHEN.search(text))
+                or (_TAKE.search(text) and _LEAVE_WORD.search(text))
+                or (_CANCEL.search(text) and _REQUEST_WORD.search(text) and not _QUESTION.search(text)))
+
+
 def should_offer_tools(text: str) -> bool:
     text = text.strip()
     if not text:
         return False
-    return _SMALL_TALK.match(text) is None
+    return _SMALL_TALK.match(text) is None and not asks_for_date(text)
 
 
 _SEARCH_REQUEST = re.compile(
