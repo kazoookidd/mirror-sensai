@@ -26,6 +26,7 @@ _capture = threading.Lock()
 
 class CommandRequest(BaseModel):
     text: str
+    conversation_id: int | None = None
 
 
 @router.post("/command")
@@ -52,5 +53,5 @@ def command(body: CommandRequest, web: WebSession = Depends(current)):
         "output": output.getvalue().strip(),
         "model": web.session.model,
         "persona": web.session.persona["name"],
-        "pending": pending_confirmation(web.session),
+        "pending": pending_confirmation(web.session, body.conversation_id or web.session.conversation_id),
     }

@@ -8,5 +8,5 @@ export const chat = {
 };
 
 export const commands = {
-  run: (text) => postJson("/command", { text }),
+  run: (text, conversationId = null) => postJson("/command", { text, conversation_id: conversationId }),
 };

@@ -134,7 +134,7 @@ export function useChat({ onConversation }) {
     if (localOutput !== undefined) return;
     setBusy(true);
     try {
-      const result = await commands.run(text);
+      const result = await commands.run(text, conversation?.id ?? null);
       updateAnswer(id, () => ({ output: result.output, pending: false }));
       if (!result.pending) showConfirmation(null, null);
       setModel(result.model);
@@ -143,7 +143,7 @@ export function useChat({ onConversation }) {
       updateAnswer(id, () => ({ error: failure.message, pending: false }));
     }
     setBusy(false);
-  }, [setModel, refreshPersonas]);
+  }, [conversation, setModel, refreshPersonas]);
 
   const attach = useCallback(async (files) => {
     for (const file of files) {

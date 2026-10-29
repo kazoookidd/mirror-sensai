@@ -57,7 +57,7 @@ def messages(conversation_id: int, web: WebSession = Depends(current)):
         "versions": versions(conversation_id),
         "attachments": list_attachments(conversation_id),
         # [A3] The waiting action belongs to the conversation of the last chat turn.
-        "pending": pending_confirmation(web.session) if web.session.conversation_id == conversation_id else None,
+        "pending": pending_confirmation(web.session, conversation_id),
     }
 
 

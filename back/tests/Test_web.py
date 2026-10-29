@@ -458,6 +458,23 @@ class TestWebApi(unittest.TestCase):
         self.assertIsNone(client.get(url).json()["pending"])
         self.assertIsNone(client.post(f"{self.url}/api/command", json={"text": "/leaves"}).json()["pending"])
 
+    def test_the_card_stays_in_the_chat_of_its_leave_request(self):
+        create_user("dora", "dora@example.com", "pw")
+        client = self.login(email="dora@example.com")
+        leave = {"leave_type": "paid_leave", "start_date": "2026-12-14", "end_date": "2026-12-18", "reason": ""}
+        call = {"content": "", "tool_calls": [{"function": {"name": "file_leave_request", "arguments": leave}}]}
+        first = events(self.chat(client, "Je pose du 14 au 18", answer=(call,)))[0][1]["id"]
+        second = events(self.chat(client, "Combien de jours pour un mariage ?", answer=("Quatre jours.",)))[0][1]["id"]
+        url = f"{self.url}/api/conversations/{{}}/messages"
+        self.assertIsNone(client.get(url.format(second)).json()["pending"])  # was the card of the first chat
+        card = client.get(url.format(first)).json()["pending"]
+        self.assertEqual(card["title"], "Leave request to confirm")
+        command = lambda conversation: client.post(f"{self.url}/api/command",
+                                                   json={"text": "/leaves", "conversation_id": conversation}).json()
+        self.assertEqual(command(first)["pending"], card)
+        self.assertIsNone(command(second)["pending"])
+        self.assertIn("Dropped", client.post(f"{self.url}/api/command", json={"text": "/cancel", "conversation_id": first}).json()["output"])
+
     def upload(self, client, name, content):
         return client.post(f"{self.url}/api/documents", params={"name": name}, data=content)
 
