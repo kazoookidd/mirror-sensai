@@ -355,6 +355,14 @@ The web interface is a front end over the same backend as the CLI: the server (`
 does. Only the output differs: the chat turn writes to `session.out` (`back/Runtime/Output.py`), which is
 the terminal for the CLI and a stream of Server-Sent Events for the browser.
 
+| Log in | An answer from the HR documents, with its source |
+| --- | --- |
+| ![Login page](docs/images/x1-login.png) | ![Chat answer citing an HR document](docs/images/r1-chat-answer-with-source.png) |
+| **Leave request waiting for confirmation ([A3])** | **History, with the model of each chat** |
+| ![Confirmation card of a leave request](docs/images/a3-confirmation-card.png) | ![History page](docs/images/x1-history.png) |
+
+<p align="center"><img src="docs/images/x1-mobile-chat-dark.png" alt="Chat on a phone, dark theme" width="260"></p>
+
 - Log in with your email or your user id. "Create an employee account" on the login page signs up a new employee
   (user id of 3 to 40 letters, digits, `.`, `_` or `-`; a valid email; a password of 8 characters at least) and
   logs them in. The role is always Employee: HR accounts are only created in the CLI.
@@ -395,23 +403,25 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
   The section is only shown to HR accounts, and the server refuses the data to anyone else (403): hiding the menu
   is not the protection.
 
-Controls marked `[TEST]` are designed but not connected yet: querying a selection of documents, the menu of
-each document, sources under the answers, the documents toggle, and the model used by each past
-conversation.
+| Employee: My files | HR: Leave requests |
+| --- | --- |
+| ![My files page of an employee](docs/images/r1-my-files.png) | ![Leave requests page of an HR account](docs/images/m1-leave-requests-hr.png) |
+| **Export ([X3])** | **Public link ([X3])** |
+| ![Export menu](docs/images/x3-export-menu.png) | ![Read-only shared chat](docs/images/x3-shared-page.png) |
 
 The front end (`front/`) is React 18 with Vite, in JavaScript (JSX). Each component has its CSS Module
 next to it; only the design tokens, fonts and a few utilities are global (`src/styles/`):
 
 ```
 front/src/
-├── main.jsx, App.jsx    # entry point, routes (#/chat, #/documents, #/history, #/settings, #/profile, #/share), error screen
+├── main.jsx, App.jsx    # entry point, routes (#/chat, #/files, #/documents, #/leaves, #/history, #/settings, #/profile, #/share), error screen
 ├── context/             # AppContext: user, Ollama status, models, context gauge, recent chats
 ├── api/                 # every call to the backend: HTTP and streaming helpers, one file per domain
 ├── lib/                 # shared helpers: formats, theme, safe Markdown rendering
 ├── components/          # shared components: ui/ (Button, Field, Dialog...) and feedback/ (EmptyState...)
 ├── layout/              # AppShell, left sidebar, mobile app bar and tab bar, Page, slide transitions
 └── features/            # one folder per domain, with its pages and components:
-                         # auth, chat, export, ollama, personas, history, documents, settings, profile, account, errors
+                         # auth, chat, export, ollama, personas, history, documents, leaves, settings, profile, account, errors
 ```
 
 Front tests (Vitest, no server or Ollama needed) sit next to the file they test:
@@ -444,6 +454,8 @@ Indexing .../data/docs... (can take a minute the first time)
 Run `/ingest` again after adding, editing or deleting documents: only changed files are
 processed again, and deleted files are removed from the index.
 
+![Knowledge base of an HR account](docs/images/r1-knowledge-base-hr.png)
+
 In the web interface, **Knowledge base > Import a document** (HR group of the sidebar) (or a drop on the dashed zone) saves `.txt`, `.md` or
 `.pdf` files of up to 10 MB in `data/docs` and runs the same indexing as `/ingest`, on this machine. A file
 with no readable text (a scanned PDF) is refused; if Ollama does not answer, the file is kept and indexed by
@@ -451,6 +463,8 @@ the next import or `/ingest`. The base is shared by every account, so only **HR 
 `/ingest` (checked by the server, 403 otherwise). An employee sees the list of documents and is pointed to the
 files joined to a chat below. Under
 Docker, `data/docs` is the `sensai_docs` volume, so imported files survive a rebuild.
+
+![A file joined to a chat](docs/images/r1-joined-file.png)
 
 **Files joined to one chat**: the paperclip of the composer joins `.txt`, `.md` or `.pdf` files (10 MB at most)
 to the current chat only. They go through the same pipeline but are stored apart (`rag/Attachments.py`):
@@ -582,4 +596,12 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 
 ## Roadmap
 
-Planned or open: input/output guardrails, telling the employee when HR decides, and the `[TEST]` controls of the web interface.
+Planned or open: input/output guardrails, telling the employee when HR decides, and an advanced RAG (the passages used under each answer, questions on a selection of documents).
+
+## Team
+
+| Name | Features |
+| --- | --- |
+| Deniz Demir | [R1] RAG (documents, files joined to a chat), [X1] web interface, [X2] branches and stopping an answer, [X3] export and public links |
+| Abdoul-Latif Wabi | [B1] CLI, [M1] accounts, history and profile, [M2] compression and token limit, [A1] ReAct agent, [A5] personas and models, [A6] semantic cache, [T3] web search, leave requests for HR, benchmarks |
+| Marc-Antoine Sadio | CI/CD, [A3] human in the loop (leave requests confirmed by the user), answer settings (temperature, seed, length) |

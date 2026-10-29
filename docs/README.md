@@ -12,6 +12,7 @@ This folder holds what the README does not:
 | [user_stories/](user_stories/) | The user stories and acceptance criteria of each feature |
 | [benchmarks/chat_models.md](benchmarks/chat_models.md) | Chat models compared on Sensai's own scenarios, on this machine |
 | [benchmarks/embedding_models.md](benchmarks/embedding_models.md) | Embedding models compared for the RAG and the semantic cache |
+| [images/](images/) | Screenshots of the web interface, shown in the README and the user stories |
 
 ## Features and their user stories
 

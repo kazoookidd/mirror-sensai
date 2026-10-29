@@ -67,3 +67,11 @@ Critères d'acceptation :
 * La page My files liste tous mes fichiers joints avec leur discussion (un clic l'ouvre), puis les documents RH en lecture seule
 * Depuis My files, je supprime un fichier joint après confirmation : sa discussion ne s'en sert plus ; un autre compte ne peut pas le supprimer (404)
 * Après un changement de modèle d'embedding, les fichiers déjà joints sont ré-encodés depuis leur texte à la question suivante : ils restent utilisables
+
+## Captures d'écran
+
+| Réponse tirée d'un document RH, avec sa source | Fichier joint à une discussion |
+| --- | --- |
+| ![Réponse qui cite loi_conge_deces.md](../images/r1-chat-answer-with-source.png) | ![Question sur un contrat joint](../images/r1-joined-file.png) |
+| **Salarié : My files** | **RH : Knowledge base** |
+| ![Page My files](../images/r1-my-files.png) | ![Page Knowledge base](../images/r1-knowledge-base-hr.png) |

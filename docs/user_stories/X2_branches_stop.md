@@ -39,3 +39,9 @@ Critères d'acceptation :
 
 * Pendant une réponse, Ctrl+C l'arrête, affiche « [answer stopped] » et revient à « You: »
 * En dehors d'une réponse, Ctrl+C quitte comme avant
+
+## Capture d'écran
+
+Après « Regenerate », la question porte `< 2/2 >` : les flèches passent d'une version à l'autre sans perdre la première.
+
+![Deux versions d'une réponse](../images/x2-answer-versions.png)

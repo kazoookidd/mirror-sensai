@@ -100,3 +100,9 @@ Critères d'acceptation :
 - Le type est une liste fermée (`enum`) dans la définition de l'outil, chaque type avec quelques mots d'explication (`bereavement = décès d'un proche, deuil`)
 - « Raison : deuil de proche » ou « décès de mon grand-père » donne `bereavement`
 - Un type hors de la liste est refusé par l'outil et l'erreur revient au modèle
+
+## Captures d'écran
+
+| Le salarié confirme sa demande | Le RH l'accepte ou la refuse |
+| --- | --- |
+| ![Carte de confirmation d'une demande de congé](../images/a3-confirmation-card.png) | ![Page Leave requests](../images/m1-leave-requests-hr.png) |

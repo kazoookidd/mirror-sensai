@@ -78,3 +78,11 @@ Critères d'acceptation :
 * Passer d'un onglet à l'autre fait glisser la page dans le sens de l'onglet ; sur téléphone, un glissement du doigt change d'onglet
 * Aucune page ne défile horizontalement, du téléphone 360 px à l'écran 1440 px
 * Le thème clair, sombre ou système est mémorisé sur l'appareil
+
+## Captures d'écran
+
+| Connexion | Historique, avec le modèle de chaque discussion |
+| --- | --- |
+| ![Page de connexion](../images/x1-login.png) | ![Page History](../images/x1-history.png) |
+
+<p align="center"><img src="../images/x1-mobile-chat-dark.png" alt="Discussion sur téléphone, thème sombre" width="260"></p>
