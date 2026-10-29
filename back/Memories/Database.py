@@ -46,6 +46,9 @@ def init_db(db_path: str = None) -> None:
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         """)
+        # The model of the last answer, shown in the history. A database made before it has the column added.
+        if "model" not in {row["name"] for row in conn.execute("PRAGMA table_info(conversations)")}:
+            conn.execute("ALTER TABLE conversations ADD COLUMN model TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
