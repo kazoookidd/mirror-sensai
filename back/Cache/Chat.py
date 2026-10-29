@@ -46,7 +46,8 @@ def check(session, user_input: str) -> CacheTurn:
     cache = get_cache(session)
     if cache.unavailable_reason:
         return CacheTurn()
-    fp = fingerprint(session.model, session.persona["system_prompt"])
+    # The persona prompt AND the user's profile [M1]: a new tone or language must not reuse old answers.
+    fp = fingerprint(session.model, session.system_prompt)
     # A question that may not be SERVED can still be STORED later, but only if it
     # passes the same rules; if it does not, skip the embedding altogether.
     if not Policy.may_serve(user_input):

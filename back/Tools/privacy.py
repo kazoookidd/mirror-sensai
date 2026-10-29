@@ -8,9 +8,10 @@ personal detail of the user into them ("congé mariage sophie.martin@acme.fr").
 Every query and every address goes through this module first.
 
 Caught: e-mail addresses, phone numbers, French social security numbers (NIR),
-IBANs, card numbers, and the logged-in user's own id and e-mail. A name typed
-in free text is NOT caught: the tool guidance asks the model to search for the
-general rule, never for a person (Agents/ReAct.py).
+IBANs, card numbers, and the logged-in user's own id, e-mail and the name of
+their profile [M1]. Any other name (a colleague's, or the user's own when the
+profile has none) is NOT caught: the tool guidance asks the model to search for
+the general rule, never for a person (Agents/ReAct.py).
 """
 
 import re
@@ -41,13 +42,16 @@ PATTERNS = (
 MIN_IDENTIFIER_CHARS = 3  # a 2-letter user id ("rh") would remove ordinary words
 
 
-def identifiers(user_id: str | None, email: str | None = None) -> tuple[str, ...]:
-    """What identifies the logged-in user: their id, its parts (sophie.martin -> sophie, martin)
-    and their e-mail."""
+def identifiers(user_id: str | None, email: str | None = None, name: str | None = None) -> tuple[str, ...]:
+    """What identifies the logged-in user: their id, its parts (sophie.martin -> sophie, martin),
+    their e-mail, and the full name of their profile [M1] with each of its words."""
     values = {email} if email else set()
     if user_id:
         values.add(user_id)
         values.update(re.split(r"[._-]+", user_id))
+    if name:
+        values.add(name)
+        values.update(re.split(r"[\s.'-]+", name))
     return tuple(v for v in values if v and len(v) >= MIN_IDENTIFIER_CHARS)
 
 
@@ -68,7 +72,7 @@ def redact(text: str, known: tuple[str, ...] = ()) -> tuple[str, list[str]]:
     for value in sorted(known, key=len, reverse=True):
         pattern = re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
         if pattern.search(text):
-            found.append("your user id")
+            found.append("your name or user id")
             text = pattern.sub(" ", text)
 
     return " ".join(text.split()), list(dict.fromkeys(found))
