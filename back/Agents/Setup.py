@@ -18,6 +18,10 @@ import os
 from typing import Callable
 
 from Agents.Tooling import ToolRegistry
+from Memories.TokenLimit import parse_bool
+
+# The tools that reach the internet (see Tools/privacy.py)
+WEB_TOOLS = ("search_internet", "read_webpage")
 
 DEFAULT_TOOLS_PATH = os.getenv(
     "AGENT_TOOLS_PATH", os.path.join(os.path.dirname(__file__), "..", "Tools", "tools.json"))
@@ -43,33 +47,61 @@ def format_search_results(results: list[dict]) -> str:
 
 @register_provider
 def web_tools(session) -> dict[str, Callable]:
+    """The only tools that send something outside: what they send is checked first (Tools/privacy.py)."""
     from Tools import web_search          # imported here: a missing optional
     from Tools.read_websearch import read_webpage  # dependency must not break startup
+    from Tools.privacy import identifiers, redact
+
+    def private() -> tuple[str, ...]:
+        return identifiers(session.user_id, session.email, (session.profile or {}).get("name"))
 
     def search_internet(query: str) -> str:
+        clean, removed = redact(query, private())
+        if removed and not clean:
+            return (f"Not sent: the query only held personal details ({', '.join(removed)}). "
+                    "Search for the general rule instead, without any personal detail.")
         # session.search_motor is read at CALL time, so /switch_search applies at once.
-        return format_search_results(web_search.search_internet(query, session.search_motor))
+        results = format_search_results(web_search.search_internet(clean, session.search_motor))
+        if removed:
+            return (f"Personal details were removed before the query left this machine "
+                    f"({', '.join(removed)}). Query sent: {clean}\n\n{results}")
+        return results
 
-    return {"search_internet": search_internet, "read_webpage": read_webpage}
+    def read_page(url: str) -> str:
+        _, found = redact(url, private())
+        if found:
+            raise ValueError(f"not opened, the address holds personal details ({', '.join(found)})")
+        return read_webpage(url)
+
+    return {"search_internet": search_internet, "read_webpage": read_page}
 
 
 @register_provider
 def hr_tools(session) -> dict[str, Callable]:
-    """[A3] Critical tool: it only prepares the request, the user's /confirm saves it."""
-    from Agents.Leave import prepare_leave_request
+    """[A3] Critical tools: they only prepare the action, the user's /confirm does it.
+    The user is always the session's: the model never chooses whose request it touches."""
+    from Agents.Leave import prepare_cancellation, prepare_leave_request
 
     def file_leave_request(leave_type: str, start_date: str, end_date: str,
                            reason: str = "") -> object:
         return prepare_leave_request(session, leave_type, start_date, end_date, reason)
 
-    return {"file_leave_request": file_leave_request}
+    def cancel_leave_request(start_date: str) -> object:
+        return prepare_cancellation(session, start_date)
+
+    return {"file_leave_request": file_leave_request, "cancel_leave_request": cancel_leave_request}
 
 
 def build_registry(session, tools_path: str = DEFAULT_TOOLS_PATH) -> ToolRegistry:
     """Bind every tool declared in tools.json to the function a provider offers.
     A declared tool nobody provides fails with a clear message at startup;
-    a provided function that tools.json does not declare is simply not offered."""
+    a provided function that tools.json does not declare is simply not offered.
+    AGENT_WEB_TOOLS=false removes the web tools: nothing at all leaves the machine."""
     functions: dict[str, Callable] = {}
     for provider in PROVIDERS:
         functions.update(provider(session))
-    return ToolRegistry.from_json(tools_path, functions)
+    registry = ToolRegistry.from_json(tools_path, functions)
+    if not parse_bool(os.getenv("AGENT_WEB_TOOLS"), True):
+        for name in WEB_TOOLS:
+            registry.tools.pop(name, None)
+    return registry

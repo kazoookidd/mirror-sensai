@@ -24,7 +24,7 @@ from pathlib import Path
 
 DEFAULT_PERSONA_ID = "default"
 DEFAULT_PERSONA_NAME = "Sensai (default)"
-DEFAULT_PERSONA_DESCRIPTION = "General-purpose assistant (system_prompt.txt)."
+DEFAULT_PERSONA_DESCRIPTION = "HR assistant for every employee (system_prompt.txt)."
 
 
 def _load_persona_file(path: Path) -> tuple[dict | None, str | None]:

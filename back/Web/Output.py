@@ -9,6 +9,8 @@ import json
 import queue
 import threading
 
+TRACE_CHARS = 1500  # a tool result can be 4000 characters: the start is enough to check it
+
 ERROR_KINDS = (
     ("cannot connect", "ollama"),
     ("not found", "model"),
@@ -54,6 +56,17 @@ class SseOutput:
 
     def note(self, text: str) -> None:
         self._emit("note", text=text.strip().lstrip("· ").strip())
+
+    def retract(self) -> None:
+        """[A1] What was streamed is not the answer (the agent calls the model again): the interface empties it."""
+        self._emit("retract")
+
+    def trace(self, kind: str, text: str) -> None:
+        """[A1] One step of the agent, shown in the "Reasoning" panel of the answer."""
+        text = text.strip()
+        if len(text) > TRACE_CHARS:
+            text = text[:TRACE_CHARS].rstrip() + " [...]"
+        self._emit("trace", kind=kind, text=text)
 
     def warning(self, text: str) -> None:
         self._emit("warning", text=text)

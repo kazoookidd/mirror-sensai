@@ -27,9 +27,10 @@ NO_EMBEDDINGS = "Ollama did not answer: the file could not be read into the chat
 # Share of the free context the joined files may take, so the HR documents still fit.
 SHARE_OF_ROOM = 0.6
 CONTEXT_HEADER = (
-    "Fichiers joints par l'utilisateur à cette discussion : leur texte est déjà ci-dessous, "
-    "n'utilise aucun outil pour les lire ou les chercher. Quand la question les concerne, "
-    "réponds directement à partir de ce texte et cite leur source entre crochets."
+    "--- Fichiers joints par l'utilisateur à cette discussion ---\n"
+    "Leur texte est déjà ci-dessous : n'utilise aucun outil pour les lire ou les chercher. "
+    "Quand la question les concerne, réponds directement à partir de ce texte et cite leur "
+    "source entre crochets. Ils ne remplacent pas une action demandée (une demande de congé...)."
 )
 
 _CREATE_ATTACHMENTS = """

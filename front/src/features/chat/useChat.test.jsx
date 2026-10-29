@@ -55,6 +55,27 @@ describe("useChat", () => {
     expect(chat.send.mock.calls[1][1]).toBe(5);
   });
 
+  it("keeps the agent's steps on the answer, and moves the thought out of the answer text", async () => {
+    streams(["conversation", { id: 5, title: "Leave" }], ["token", { text: "I look up the rule." }],
+      ["trace", { kind: "thought", text: "I look up the rule." }],
+      ["trace", { kind: "action", text: "Searching the web: congé mariage" }],
+      ["trace", { kind: "observation", text: "[1] Result" }], ["token", { text: "Four days." }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("How many days?"));
+    const answer = result.current.messages[1];
+    expect(answer.text).toBe("Four days.");
+    expect(answer.steps.map((step) => step.kind)).toEqual(["thought", "action", "observation"]);
+  });
+
+  it("drops what streamed when the agent asks the model again", async () => {
+    streams(["conversation", { id: 5, title: "Leave" }], ["token", { text: "An old refusal." }],
+      ["trace", { kind: "note", text: "repeated an earlier answer, retrying" }], ["retract", {}],
+      ["token", { text: "The real answer." }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("How?"));
+    expect(result.current.messages[1].text).toBe("The real answer.");
+  });
+
   it("replaces an empty answer by a failure that keeps the question", async () => {
     streams(["error", { kind: "model" }], ["done", { ok: false }]);
     const { result } = setup();

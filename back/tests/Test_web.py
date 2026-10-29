@@ -45,6 +45,7 @@ CHAT_MODELS = ["m"]  # other:7b is listed but refused by /api/chat, like a model
 
 class FakeOllama(BaseHTTPRequestHandler):
     scripted: list = []
+    received: list = []  # the /api/chat payloads, latest last
 
     def _json(self, status, body):
         data = json.dumps(body).encode()
@@ -62,6 +63,7 @@ class FakeOllama(BaseHTTPRequestHandler):
         if self.path != "/api/chat":
             self._json(404, {"error": "not found"})
             return
+        type(self).received.append(payload)
         if payload["model"] not in CHAT_MODELS:
             self._json(404, {"error": f"model '{payload['model']}' not found"})
             return
@@ -143,7 +145,7 @@ class TestWebApi(unittest.TestCase):
 
     def test_login_by_email_or_user_id(self):
         client = self.login()
-        self.assertEqual(client.get(f"{self.url}/api/me").json(), {"user_id": "alice", "model": "m"})
+        self.assertEqual(client.get(f"{self.url}/api/me").json(), {"user_id": "alice", "model": "m", "account_role": "hr"})
         self.login(email="alice")
 
     def test_routes_need_a_session(self):
@@ -264,6 +266,84 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(client.put(f"{self.url}/api/settings/temperature", json={"value": "9"}).status_code, 422)
         self.assertEqual(client.put(f"{self.url}/api/settings/num-predict", json={"value": "default"}).status_code, 200)
         self.assertEqual(client.put(f"{self.url}/api/settings/nope", json={"value": "1"}).status_code, 404)
+
+    def test_profile_is_saved_checked_and_used_by_the_next_answer(self):
+        client = self.login("bob@example.com")
+        self.assertEqual(client.get(f"{self.url}/api/profile").json(),
+                         {"profile": {"name": "", "role": "", "department": "", "language": "", "tone": "",
+                                      "instructions": ""}, "context": "", "account": {"role": "hr", "label": "HR"}})
+        saved = client.put(f"{self.url}/api/profile", json={"role": "  RH  ", "tone": "Concise"}).json()
+        self.assertEqual((saved["profile"]["role"], saved["profile"]["tone"]), ("RH", "concise"))
+        self.assertEqual(saved["context"], "[profile]\njob: RH\ntone: concise")
+        refused = client.put(f"{self.url}/api/profile", json={"tone": "funny"})
+        self.assertEqual(refused.status_code, 422)
+        self.assertIn("tone must be one of", refused.json()["detail"])
+        self.assertEqual(client.get(f"{self.url}/api/profile").json()["profile"]["tone"], "concise")
+        self.assertEqual(self.login().get(f"{self.url}/api/profile").json()["context"], "")  # alice's own
+        self.assertEqual(requests.get(f"{self.url}/api/profile").status_code, 401)
+
+        events(self.chat(client, "Bonjour"))
+        self.assertIn("job: RH", FakeOllama.received[-1]["messages"][0]["content"])
+        output = client.post(f"{self.url}/api/command", json={"text": "/profile"}).json()["output"]
+        self.assertIn("RH", output)
+
+    def test_signing_up_creates_an_employee_account_and_logs_in(self):
+        client = requests.Session()
+        with redirect_stdout(io.StringIO()):
+            response = client.post(f"{self.url}/api/signup", json={
+                "user_id": "sophie.m", "email": " sophie@example.com ", "password": "longenough",
+                "role": "hr"})  # a role sent by the client is ignored
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["account_role"], "employee")
+        self.assertEqual(client.get(f"{self.url}/api/me").json()["account_role"], "employee")
+        self.assertEqual(client.get(f"{self.url}/api/profile").json()["account"], {"role": "employee", "label": "Employee"})
+        refused = client.put(f"{self.url}/api/profile", json={"account_role": "hr"})
+        self.assertEqual(refused.status_code, 422)  # the role is not a profile field
+        self.assertEqual(self.login("sophie@example.com", "longenough").get(f"{self.url}/api/me").json()["user_id"],
+                         "sophie.m")
+
+    def test_only_hr_accounts_see_every_leave_request(self):
+        from Memories.Auth import ROLE_EMPLOYEE
+        from Memories.Leaves import save_leave_request
+        create_user("emma", "emma@example.com", "pw", role=ROLE_EMPLOYEE)
+        save_leave_request("emma", {"leave_type": "bereavement", "start_date": "2026-11-03",
+                                    "end_date": "2026-11-06", "reason": "deuil"})
+        data = self.login().get(f"{self.url}/api/leave-requests").json()  # alice: HR
+        mine = [r for r in data["requests"] if r["user_id"] == "emma"]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual((mine[0]["email"], mine[0]["type_label"], mine[0]["status_label"]),
+                         ("emma@example.com", "Bereavement", "Pending"))
+        refused = self.login("emma@example.com").get(f"{self.url}/api/leave-requests")
+        self.assertEqual(refused.status_code, 403)
+        self.assertNotIn("requests", refused.json())
+        self.assertEqual(requests.get(f"{self.url}/api/leave-requests").status_code, 401)
+
+        # HR decides; the employee cannot, even by calling the route by hand.
+        hr = self.login()
+        url = f"{self.url}/api/leave-requests/{mine[0]['id']}"
+        self.assertEqual(self.login("emma@example.com").put(url, json={"status": "approved"}).status_code, 403)
+        decided = hr.put(url, json={"status": "approved"}).json()["request"]
+        self.assertEqual((decided["status"], decided["status_label"], decided["decided_by"]), ("approved", "Approved", "alice"))
+        self.assertEqual(hr.put(url, json={"status": "maybe"}).status_code, 422)
+        self.assertEqual(hr.put(f"{self.url}/api/leave-requests/999999", json={"status": "approved"}).status_code, 404)
+        from Memories.Leaves import STATUS_PENDING, cancel_leave_request
+        hr.put(url, json={"status": STATUS_PENDING})
+        cancel_leave_request("emma", mine[0]["id"])
+        self.assertEqual(hr.put(url, json={"status": "approved"}).status_code, 409)
+
+    def test_sign_up_is_refused_with_the_reason(self):
+        cases = [({"user_id": "alice"}, 409, "user id is already used"),
+                 ({"email": "alice@example.com"}, 409, "email address is already used"),
+                 ({"user_id": "a@b"}, 422, "user id must be"),
+                 ({"user_id": "x"}, 422, "user id must be"),
+                 ({"email": "not-an-email"}, 422, "valid email"),
+                 ({"password": "short"}, 422, "at least 8")]
+        for change, status, message in cases:
+            body = {"user_id": "newbie", "email": "newbie@example.com", "password": "longenough", **change}
+            response = requests.post(f"{self.url}/api/signup", json=body)
+            self.assertEqual(response.status_code, status, change)
+            self.assertIn(message, response.json()["detail"], change)
+            self.assertNotIn("set-cookie", {k.lower() for k in response.headers}, change)
 
     def test_models_and_switching(self):
         client = self.login()

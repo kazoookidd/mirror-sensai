@@ -9,6 +9,10 @@ is an HR assistant, centred on employee onboarding.
 - **Streaming responses**: output is rendered progressively, not as a single block
 - **Accounts and conversations** ([M1]): login at startup, several independent conversations per user,
   everything stored in SQLite
+- **User profile** ([M1]): job, department, preferred language and tone, custom instructions; added to the
+  system prompt of every answer, whatever the persona (`/profile` in the CLI, Profile page on the web)
+- **Account roles** ([M1]): HR accounts are created in the CLI, employee accounts sign up on the web; the role is
+  set at creation, shown in the profile, and cannot be changed by its owner
 - **Context compression** ([M2]): old messages are summarised so the context stays under a token
   budget, with metrics
 - **Token limit and usage**: block (or continue) past the limit; a small dimmed line shows the tokens
@@ -16,7 +20,10 @@ is an HR assistant, centred on employee onboarding.
 - **Personas**: switch the assistant's role (onboarding buddy, recruiter, senior HR...) while chatting
 - **Runtime switching**: change model, persona, temperature, seed or answer length without restarting
 - **Agent with tools** ([A1], ReAct): the model decides by itself when to search the web or read a page,
-  with no command needed from the user
+  with no command needed from the user; every step (thought, tool, result) is shown: dimmed lines in the
+  terminal, a "Reasoning" panel under the answer in the web interface
+- **Private by design**: the model, the chats and the documents stay on the machine; the only thing that
+  leaves it is a web search, and personal details are removed from it first ([T3], see below)
 - **Semantic cache** ([A6]): a question that means the same as an earlier one is answered instantly, with
   no model call
 - **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
@@ -32,7 +39,8 @@ is an HR assistant, centred on employee onboarding.
 - **Configurable via `.env`**, with command-line overrides
 - **Clean error handling**: unavailable model, empty input, connection failure, interrupted stream
 
-How it all works, module by module: [docs/Sensai_overview.md](docs/Sensai_overview.md).
+The use case: [docs/Scenario.md](docs/Scenario.md). The user stories of each feature:
+[docs/user_stories/](docs/user_stories/).
 
 ## Requirements
 
@@ -48,6 +56,12 @@ ollama pull nomic-embed-text    # embeddings (RAG and semantic cache)
 
 The agent needs a model with **tool calling** (`llama3.1`, `qwen2.5`...). A model without it still
 works: it answers without tools, after one dimmed note.
+
+Which model to pick on a laptop without GPU, measured on Sensai's own scenarios:
+[docs/benchmarks/chat_models.md](docs/benchmarks/chat_models.md) (`qwen2.5:3b` for live use, `qwen2.5:7b`
+for the best answers) and [docs/benchmarks/embedding_models.md](docs/benchmarks/embedding_models.md)
+(`bge-m3` finds the French HR passages better, with other thresholds). Both are reproduced by the scripts
+of `back/benchmarks/`.
 
 ## Installation
 
@@ -76,8 +90,9 @@ With Docker, nothing has to be installed except Docker itself: see [Quick start]
 | Web, local | `ollama serve`, then `./start.sh --web` | http://127.0.0.1:8000 |
 | Web, Docker | `docker compose up --build` | http://localhost:3000 |
 
-Accounts are created in the CLI: log in with a new user id and it asks for an email and a password.
-The web interface then accepts that user id or that email.
+There are two kinds of accounts ([M1]). **HR accounts** are created in the CLI: log in with a new user id and
+it asks for an email and a password. **Employee accounts** are created on the web: "Create an employee account"
+on the login page. Both log in anywhere, with their user id or their email.
 
 With Docker, Ollama runs in its own container and the first start downloads `qwen2.5:3b` and
 `nomic-embed-text` (set `MODEL` in `.env` to use another model). The data lives in Docker volumes, apart
@@ -85,14 +100,17 @@ from the local `storage/sensai.db`, so create the account inside the container:
 
 ```bash
 docker compose up --build -d                 # front on :3000, API on :8080
-docker compose exec back python back/Chatbot.py   # log in once to create the account, then type exit
+docker compose exec back python back/Chatbot.py   # log in once to create an HR account, then type exit
 docker compose logs -f back                  # server logs
 docker compose down                          # stop (add -v to also delete the volumes)
 ```
 
 ## Configuration
 
-Edit `.env`. Every variable has a default in the code, so a short file is enough:
+Edit `.env` (created by `install.sh` from `.env.example`). Every variable has a default in the code, so a
+short file is enough. It is read from the project root whatever the current folder, before any module
+reads its settings (`back/Runtime/Env.py`), and a variable already set in the shell or by Docker wins
+over the file:
 
 ```env
 MODEL=llama3.1
@@ -104,10 +122,10 @@ SYSTEM_PROMPT_PATH=back/config/system_prompt.txt
 | --- | --- |
 | Model and prompt | `MODEL`, `OLLAMA_BASE_URL`, `SYSTEM_PROMPT_PATH`, `PERSONAS_DIR`, `DEFAULT_PERSONA` |
 | Answers | `TEMPERATURE`, `SEED`, `NUM_PREDICT` (unset = the model's default) |
-| Context ([M2]) | `CONTEXT_TOKEN_BUDGET` (4000), `CONTEXT_THRESHOLD_RATIO` (0.8), `CONTEXT_KEEP_LAST_N` (10) |
+| Context ([M2]) | `CONTEXT_TOKEN_BUDGET` (4000), `CONTEXT_THRESHOLD_RATIO` (0.8), `CONTEXT_KEEP_LAST_N` (10). Sensai asks Ollama for a window (`num_ctx`) of the budget plus ~1,500 tokens for the tools and the answer (`NUM_PREDICT`, 1,024 if unset), rounded up: 7,168 for 4,000. Raising the budget is safe; it costs RAM (~36 KB per token for qwen2.5:3b) and above all time, since every token of a long chat is read again |
 | Token limit | `TOKEN_LIMIT_ACTION` (`block` or `continue`), `SHOW_TOKEN_USAGE` |
 | Agent ([A1]) | `AGENT_TOOLS`, `AGENT_MAX_STEPS` (4), `AGENT_TEMPERATURE`, `AGENT_SHOW_ACTIVITY`, `AGENT_TOOLS_PATH` |
-| Web search | `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` (only the engine you use) |
+| Web search ([T3]) | `AGENT_WEB_TOOLS` (`false` = nothing leaves the machine), `SEARCH_ENGINE` (`tavily`, `brave` or `exa`), `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` (only the engine you use) |
 | Cache ([A6]) | `CACHE_ENABLED`, `CACHE_EMBED_MODEL`, `CACHE_SIMILARITY` (0.92), `CACHE_TTL_HOURS` (168), `CACHE_MAX_ENTRIES` (500), `CACHE_SCOPE` (`user`), `CACHE_CONTEXT_FREE_ONLY` |
 | RAG ([R1]) | see the RAG section below |
 
@@ -160,11 +178,58 @@ tokens: 27 in · 21 out
 | `/settings [name [value]]` (`/set`) | list the settings or change one: `temperature`, `token-limit`, `token-usage`, `cache`, `seed`, `num-predict` |
 | `/search`, `/switch_search [name\|number]` | list / switch the search engine (Brave, Tavily, Exa) |
 | `/confirm`, `/cancel` | go ahead with the action waiting for your approval, or drop it |
-| `/leaves` | list the leave requests you filed |
+| `/leaves` | list the leave requests you filed, with their status |
+| `/leaves all` | HR accounts: list the leave requests of every employee |
+| `/leaves approve\|refuse <n>` | HR accounts: decide on request #n (`/leaves pending <n>` undoes the decision) |
+| `/profile [field [value]]` | show your profile, or change one field (`/profile clear` empties it) |
 | `/ingest [folder]` | index HR documents for the RAG (also empties the semantic cache) |
 | `/cache [clear]` | show the semantic cache, or empty it |
 | `/export [md\|json\|pdf]` | save the conversation to a file in `exports/` (default: Markdown) |
 | `exit` | quit |
+
+## User profile ([M1])
+
+Each account has a profile: who the user is and how they want to be answered. It is saved in SQLite (table
+`profiles`), read again at every turn and added to the system prompt after the persona's own prompt, so it
+follows the user across conversations, personas and models. An empty profile adds nothing.
+
+```
+You: /profile role Consultante en mission
+role set to "Consultante en mission". It applies to the next answers.
+You: /profile tone concise
+You: /profile
+=== Your profile ===
+  account       HR (set when the account was created, cannot be changed)
+  name          (not set)
+  role          Consultante en mission
+  department    (not set)
+  language      (not set)
+  tone          concise
+  instructions  (not set)
+Added to the instructions of every answer (~12 tokens).
+```
+
+The model then receives, after the persona prompt:
+
+```
+--- User profile ---
+What the user told about themselves and how they want to be answered. Take it into account, unless it goes against the rules above.
+[profile]
+job: Consultante en mission
+tone: concise
+```
+
+- The account type (HR or Employee) is shown first. It is set when the account is created (HR in the CLI,
+  Employee on the web), stored with the account (`users.role`), and cannot be changed by `/profile` nor by the
+  Profile page. Rights per role are not enforced yet: it is the base for them. A database made before roles
+  existed gets the column at startup, and its accounts (all made in the CLI) are HR accounts.
+- Fields: `name`, `role` (`job`, `poste`), `department` (`service`), `language` (`langue`), `tone` (`concise` or
+  `detailed`), `instructions` (1,000 characters at most). `/profile <field> clear` empties one, `/profile clear`
+  empties all.
+- Web: the Profile page (account menu) edits the same profile, with a preview of the exact text sent to the
+  model; both go through the same checks (`back/Memories/Profile.py`).
+- The profile is part of the semantic cache fingerprint: an answer given with another tone or language is not
+  served again. Its `name` is removed from web searches like the account id ([T3]).
 
 ## Agent and tools ([A1])
 
@@ -175,13 +240,41 @@ A message that needs no tool costs **one** model call.
 ```
 You: Qui est le PDG de Renault ?
   · Searching the web: PDG Renault
+  · result: [1] Renault Group : direction ... https://...
 Assistant: D'après les résultats trouvés (https://...), ...
 ```
+
+Each step of the loop is shown (`AGENT_SHOW_ACTIVITY=false` hides it): in the terminal, one dimmed line per
+tool call and per result; in the web interface, a "Reasoning · n tool calls" line under the answer, that
+opens on the thought, the action and the result of each step (results cut at 1,500 characters). The model is
+asked to write one short sentence before a tool call (what it looks for, and why); small models often skip
+it, the actions and results are shown anyway. The trace is shown live: it is not saved with the answer.
+
+### What leaves the machine ([T3])
+
+The model, the conversations and the documents never leave the machine. The web tools are the only
+exception: `search_internet` sends a query to Brave, Tavily or Exa, `read_webpage` opens an address. The model
+writes them itself, so `back/Tools/privacy.py` checks them first:
+
+- removed from every query: e-mail addresses, phone numbers, French social security numbers, IBANs, card
+  numbers (Luhn check), and the logged-in user's id and e-mail;
+- a query made only of personal details is not sent; a page whose address holds one is not opened;
+- the model is told what was removed and the query actually sent, and so is the user (in the trace);
+- the tool guidance tells the model to search for the general rule, never for a person;
+- `AGENT_WEB_TOOLS=false` removes the web tools: nothing is sent at all, leave requests still work.
+
+The account id and the profile's name are removed too; any other name (a colleague's) is not detected: that
+case relies on the guidance.
 
 - Tools are declared in `back/Tools/tools.json` (`search_internet`, `read_webpage`).
 - Greetings and thanks are answered without offering tools.
 - Guards for small models: a limit of steps, an identical call is not run twice, a bad tool call is
-  reported to the model instead of crashing, and an answer that repeats an old one is rejected.
+  reported to the model instead of crashing, and an answer that repeats an old one is rejected (the web
+  interface drops the rejected text from the screen).
+- A tool call a small model WRITES in its answer (JSON, possibly cut short, in `<tool_call>` tags or a code
+  block) instead of Ollama's `tool_calls` field is recognized and run; it is never shown as the answer.
+- "On est quel jour ?" gets no tools: today's and tomorrow's dates, in English and French, are in the system
+  message of every answer.
 - Adding a tool: one entry in `tools.json` + one provider in `back/Agents/Setup.py`.
 
 ### Human in the loop ([A3])
@@ -205,6 +298,15 @@ Leave request #7 saved for alice. See all yours with /leaves.
 ```
 
 - The action only runs on `/confirm`, with exactly the data that was shown. `/cancel`, or a new request, drops it.
+- `leave_type` is a closed list (`enum`) in `tools.json`, each type with a few words of meaning
+  (`bereavement = décès d'un proche, deuil`): small models no longer file a bereavement as sick leave. It costs
+  about 70 tokens.
+- `cancel_leave_request` is the second critical tool: "Annule mon congé du 3 novembre" gives only the first day;
+  the code looks for that pending request **among the user's own requests only** (the user comes from the session,
+  never from the model), shows it, and cancels it on `/confirm`. A request is never deleted: its status goes from
+  `pending` to `cancelled`, and the HR view keeps it.
+- A message that files or cancels a leave gets no HR excerpts (see the RAG section): they made small models
+  explain the rules instead of acting.
 - The pending action is held on the server, in the user's session: the same in the terminal and in the web UI.
 - In the web UI the plan is shown as a card with **Confirm** and **Cancel** (they run `/confirm` and `/cancel`).
   The card stays after a page reload, and disappears once nothing is waiting any more.
@@ -253,9 +355,11 @@ The web interface is a front end over the same backend as the CLI: the server (`
 does. Only the output differs: the chat turn writes to `session.out` (`back/Runtime/Output.py`), which is
 the terminal for the CLI and a stream of Server-Sent Events for the browser.
 
-- Log in with an account created in the CLI (its email or its user id).
+- Log in with your email or your user id. "Create an employee account" on the login page signs up a new employee
+  (user id of 3 to 40 letters, digits, `.`, `_` or `-`; a valid email; a password of 8 characters at least) and
+  logs them in. The role is always Employee: HR accounts are only created in the CLI.
 - Answers stream word by word; the gauge under the composer shows the context used against
-  `CONTEXT_TOKEN_BUDGET`.
+  `CONTEXT_TOKEN_BUDGET`. When the agent used tools, "Reasoning" above the answer opens its steps.
 - Model, persona, temperature and answer length are changed live, with the same checks as `/model`,
   `/persona` and `/settings` (persona: sidebar and Settings; the chat history is kept).
 - History: search, sort, rename, delete (also from the "⋯" menu of each recent chat in the sidebar).
@@ -275,9 +379,19 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
 - Light, dark or system theme.
 - The server listens on `127.0.0.1` only (`WEB_HOST`, `WEB_PORT` in `.env`).
 
+- Profile (account menu, or `#/profile` on phones): the profile used by every answer, with a preview of the exact
+  text sent to the model. It is the same profile as `/profile` in the CLI.
+- Leave requests (`#/leaves`, HR accounts only): every employee's requests (employee and email, type, period,
+  reason, date filed, status), with a search and filters by type and status; a table on desktop, cards on phones.
+  HR approves or refuses each request from the status menu (back to Pending undoes it); who decided is shown
+  under it and stored. A request the employee cancelled is final: it shows a badge, and the server refuses (409)
+  to decide on it. The employee sees the decision with `/leaves`.
+  The section is only shown to HR accounts, and the server refuses the data to anyone else (403): hiding the menu
+  is not the protection.
+
 Controls marked `[TEST]` are designed but not connected yet: querying a selection of documents, the menu of
-each document, sources under the answers, the documents toggle, the profile page, and the model used
-by each past conversation.
+each document, sources under the answers, the documents toggle, and the model used by each past
+conversation.
 
 The front end (`front/`) is React 18 with Vite, in JavaScript (JSX). Each component has its CSS Module
 next to it; only the design tokens, fonts and a few utilities are global (`src/styles/`):
@@ -350,6 +464,13 @@ Assistant: Le salarié peut bénéficier d'un congé de 4 jours pour un mariage.
 
 A question unrelated to the documents ("Quelle est la recette de la pizza ?") gets no excerpt.
 
+The excerpts are added to the **system message**, as a titled section after the persona and the profile (the
+tool guidance comes last). The section describes them instead of giving orders: found automatically, maybe
+off-topic, to quote when the question is about them, to ignore otherwise, and never a reason to skip a tool.
+An earlier version put them in a second system message right before the question, ending with "say so if they
+do not answer": small models then refused leave requests and web searches whenever an excerpt was found
+(measured in [docs/benchmarks/chat_models.md](docs/benchmarks/chat_models.md)).
+
 ### How it works
 
 
@@ -391,9 +512,9 @@ sensai/
 │   ├── Web/                  # FastAPI app, sessions, SSE output, one route file per domain
 │   ├── Commands.py           # Session state and the slash commands
 │   ├── Memories/             # SQLite: users, conversations, history, compression, token limit
-│   ├── Runtime/              # personas, models, settings and parameters
+│   ├── Runtime/              # .env loading, personas, models, settings and parameters
 │   ├── Agents/               # ReAct loop, tool registry, router, engine, tool providers
-│   ├── Tools/                # tools.json, web search, page reader
+│   ├── Tools/                # tools.json, web search, page reader, privacy filter
 │   ├── Cache/                # semantic cache: storage, policy, chat glue
 │   ├── Export/               # [X3] JSON / Markdown / PDF export (fpdf2, Noto Sans font) and public links
 │   ├── rag/                  # loader, chunker, embeddings, store, retriever
@@ -438,10 +559,19 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 ## Known limits
 
 - Everything was tested against a fake Ollama: the real behaviour depends on the model.
+- The privacy filter catches patterns (e-mail, phone, social security number, IBAN, card), the account id and
+  the profile's name, not any other name.
+- The reasoning trace is not saved: after a reload, the answer is shown without it.
+- A leave request worded without a leave verb ("je commence le 3 et je termine le 6, raison : deuil") is not
+  recognised as one: it keeps the HR excerpts, and a small model then often explains the rules instead of acting.
 - Tools and their instructions add about 600 tokens to a message when they are offered.
-- Very small models can still get dates wrong or ignore a search result.
-- The persona is not stored per conversation; the persistent profile ([M1]) is not done yet.
+- Very small models can still get dates wrong or ignore a search result. Below 3B parameters (`llama3.2:1b`), tool
+  calling is not reliable: the model often writes the call as text (Sensai recognizes it and runs it), or copies the
+  tool's schema instead of a query (the call is refused, the model answers without it). Use `qwen2.5:3b` or larger
+  for the agent.
+- The persona is not stored per conversation.
 
 ## Roadmap
 
-Planned or open: guardrails, a persistent user profile, more tools for the agent, and the `[TEST]` controls of the web interface.
+Planned or open: input/output guardrails, telling the employee when HR decides, and the `[TEST]` controls of the
+web interface.

@@ -115,7 +115,11 @@ class AttachmentTests(unittest.TestCase):
         context = [{"role": "system", "content": "s"}]
         with mock.patch.object(Chatbot, "rag_message", return_value={"role": "system", "content": "docs RH"}) as rag:
             Chatbot.add_documents(context, "Combien de congés ?", "http://x", self.conversation)
-        self.assertEqual([m["content"][:30] for m in context[1:]], [Attachments.CONTEXT_HEADER[:30], "docs RH"])
+        # One system message: its prompt, then the joined files, then the HR documents.
+        self.assertEqual(len(context), 1)
+        system = context[0]["content"]
+        self.assertTrue(system.startswith(f"s\n\n{Attachments.CONTEXT_HEADER}"))
+        self.assertTrue(system.endswith("\n\ndocs RH"))
         self.assertLess(rag.call_args.args[1], Chatbot.get_budget())
         session = mock.MagicMock(conversation_id=self.conversation)
         with mock.patch.object(Chatbot, "check_cache") as check, \

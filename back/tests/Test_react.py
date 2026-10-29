@@ -20,7 +20,8 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from Agents.ReAct import LLMError, ModelReply, ReActAgent, ollama_llm, parse_tool_call, repeats_earlier_answer
+from Agents.ReAct import (LLMError, ModelReply, ReActAgent, announces_search, describe_day, ollama_llm,
+                          parse_tool_call, repeats_earlier_answer, tool_calls_in_text)
 from Agents.Confirmation import PendingAction
 from Agents.Engine import generate_reply
 from Agents.Setup import DEFAULT_TOOLS_PATH, build_registry, format_search_results, hr_tools
@@ -251,6 +252,11 @@ class TestRepeatGuard(unittest.TestCase):
         r = ReActAgent(Script(say(self.OLD), say(self.OLD)), make_registry()).run_messages(self.history())
         self.assertEqual(r.answer, self.OLD)
 
+    def test_the_day_is_given_in_french_too(self):
+        from datetime import date
+        self.assertEqual(describe_day(date(2026, 10, 29)), "Thursday 2026-10-29 (in French: jeudi 29 octobre 2026)")
+        self.assertEqual(describe_day(date(2026, 8, 2)), "Sunday 2026-08-02 (in French: dimanche 2 août 2026)")
+
     def test_guidance_has_the_date_the_language_rule_and_the_search_reminder(self):
         llm = Script(say("x"))
         ReActAgent(llm, make_registry()).run("q")
@@ -260,6 +266,79 @@ class TestRepeatGuard(unittest.TestCase):
         self.assertIn((date.today() + timedelta(days=1)).isoformat(), system)
         self.assertIn("ignore them", system)
         self.assertIn("language the user writes in", system)
+
+
+class TestAnnouncedSearch(unittest.TestCase):
+    def test_announcing_a_search_is_detected(self):
+        for text in ("Je vais faire une recherche pour vous aider.", "Pour cela, il faudrait chercher sur Internet.",
+                     "Let me search the web for it.", "Nous devrions rechercher cette information en ligne.",
+                     "Je ne peux pas répondre car elle nécessite une recherche sur Internet.",
+                     "Que dirais-tu de faire une recherche pour savoir qui a gagné ?"):
+            self.assertTrue(announces_search(text), text)
+        for text in ("Le Ballon d'Or 2025 a été remis à X.", "Je vais vous expliquer la règle.", "Cherchez dans le règlement."):
+            self.assertFalse(announces_search(text), text)
+
+    def test_the_model_is_asked_once_to_run_the_search_it_announced(self):
+        calls = []
+        llm = Script(say("Je vais faire une recherche pour vous aider."),
+                     tools_reply(call("search_internet", {"query": "ballon d'or 2026"})),
+                     say("Le Ballon d'Or 2026 a été remis à X."))
+        events = []
+        r = ReActAgent(llm, make_registry(calls), on_event=lambda k, t: events.append((k, t))).run("qui a eu le ballon d'or ?")
+        self.assertEqual(r.answer, "Le Ballon d'Or 2026 a été remis à X.")
+        self.assertEqual(calls, [("search_internet", "ballon d'or 2026")])
+        self.assertIn("call search_internet now", llm.seen[1][-1]["content"])
+        self.assertIn(("note", "announced a search without running it, retrying"), events)
+
+    def test_only_once_and_never_after_a_real_search(self):
+        r = ReActAgent(Script(say("Je vais faire une recherche."), say("Je vais faire une recherche.")),
+                       make_registry()).run("q")
+        self.assertEqual(r.answer, "Je vais faire une recherche.")
+        llm = Script(tools_reply(call("search_internet", {"query": "x"})), say("Il faudrait chercher ailleurs."))
+        self.assertEqual(ReActAgent(llm, make_registry()).run("q").answer, "Il faudrait chercher ailleurs.")
+
+    def test_no_retry_without_a_search_tool(self):
+        registry = ToolRegistry([Tool("read_webpage", "Read", READ, lambda url: "")])
+        r = ReActAgent(Script(say("Je vais faire une recherche.")), registry).run("q")
+        self.assertEqual(r.llm_calls, 1)
+
+
+class TestToolCallsInText(unittest.TestCase):
+    NAMES = {"search_internet", "read_webpage"}
+
+    def calls(self, text):
+        return [(c["function"]["name"], c["function"]["arguments"]) for c in tool_calls_in_text(text, self.NAMES)]
+
+    def test_the_shapes_small_models_write_are_understood(self):
+        cases = {
+            '{"name": "search_internet", "arguments": {"query": "smic"}}': [("search_internet", {"query": "smic"})],
+            '{"name": "search_internet", "parameters": {"query": "smic"}}': [("search_internet", {"query": "smic"})],
+            '{"type":"function","function":{"name":"search_internet","description":"d","parameters":{"query":"jour"}}}':
+                [("search_internet", {"query": "jour"})],
+            '<tool_call>\n{"name": "read_webpage", "arguments": "{\\"url\\": \\"http://a\\"}"}\n</tool_call>':
+                [("read_webpage", {"url": "http://a"})],
+            '```json\n[{"name": "search_internet", "arguments": {"query": "a"}}, '
+            '{"name": "search_internet", "arguments": {"query": "b"}}]\n```':
+                [("search_internet", {"query": "a"}), ("search_internet", {"query": "b"})],
+        }
+        for text, expected in cases.items():
+            self.assertEqual(self.calls(text), expected, text)
+
+    def test_missing_closing_braces_are_added(self):
+        self.assertEqual(self.calls('{"function": {"name": "search_internet", "parameters": {"query": "x"}'),
+                         [("search_internet", {"query": "x"})])
+        self.assertEqual(self.calls('[{"name": "search_internet", "arguments": {"query": "x"}'),
+                         [("search_internet", {"query": "x"})])
+
+    def test_a_copied_schema_gives_no_arguments(self):
+        text = '{"name": "search_internet", "parameters": {"type": "object", "properties": {"query": {}}}}'
+        self.assertEqual(self.calls(text), [("search_internet", {})])
+
+    def test_anything_else_is_an_answer(self):
+        for text in ("Bonjour !", '{"jours": 4}', '{"name": "delete_everything", "arguments": {}}',
+                     'Voici : {"name": "search_internet", "arguments": {"query": "x"}}',
+                     '{"name": "search_internet", "arguments": {"query": "x"}} puis la réponse', "{broken", ""):
+            self.assertEqual(self.calls(text), [], text)
 
 
 class TestTooling(unittest.TestCase):
@@ -308,7 +387,8 @@ class TestSetup(unittest.TestCase):
     def test_real_tools_json_binds_and_the_engine_is_read_from_the_session_at_call_time(self):
         session = self.session("tavily")
         registry = build_registry(session)
-        self.assertEqual(registry.names(), ["search_internet", "read_webpage", "file_leave_request"])
+        self.assertEqual(registry.names(), ["search_internet", "read_webpage", "file_leave_request",
+                                            "cancel_leave_request"])
         with mock.patch("Tools.web_search.search_internet", return_value=[]) as fake:
             registry.run("search_internet", {"query": "x"})
             session.search_motor = "exa"  # /switch_search

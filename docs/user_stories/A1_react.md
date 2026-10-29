@@ -26,7 +26,10 @@ En tant qu'utilisateur, je veux pouvoir suivre ce que fait l'agent (pensées,
 outils appelés, résultats), afin de comprendre et vérifier d'où vient la réponse.
 
 Critères d'acceptation :
-- Chaque pensée, action et observation est notifiée (affichage discret, optionnel)
+- Chaque pensée, action et observation est notifiée (affichage discret, désactivable avec `AGENT_SHOW_ACTIVITY=false`)
+- Dans le terminal : une ligne grisée par appel d'outil (« Searching the web: ... ») et par résultat (« result: ... »)
+- Dans l'interface web : « Reasoning · n tool calls » au-dessus de la réponse ouvre les étapes (pensée, action, résultat ou échec) ; pendant la réponse, la ligne montre l'outil en cours
+- Le texte écrit par le modèle avant un appel d'outil passe dans la trace comme « pensée » au lieu de rester dans la réponse
 - Le résultat indique les outils utilisés et le statut de fin (réponse, max étapes, répétition...)
 
 **US-A1-04**

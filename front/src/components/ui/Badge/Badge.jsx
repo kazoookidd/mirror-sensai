@@ -5,6 +5,10 @@ const STATUSES = {
   indexed: { label: "Indexed", tone: "success" },
   outdated: { label: "Outdated", tone: "neutral" },
   not_indexed: { label: "Not indexed", tone: "neutral" },
+  pending: { label: "Pending", tone: "accent" },  // leave requests [M1]
+  approved: { label: "Approved", tone: "success" },
+  refused: { label: "Refused", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
 };
 
 export function Dot({ tone = "success" }) {

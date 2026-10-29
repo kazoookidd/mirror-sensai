@@ -16,7 +16,19 @@ from Memories.Conversations import (
 )
 from Memories.TokenLimit import DEFAULT_ACTION
 from Agents.Confirmation import PendingAction
-from Memories.Leaves import list_leave_requests
+from Memories.Auth import ROLE_EMPLOYEE, ROLE_HR, ROLE_LABELS
+from Memories.Leaves import (STATUS_APPROVED, STATUS_LABELS, STATUS_PENDING, STATUS_REFUSED, decide_leave_request,
+                             list_all_leave_requests, list_leave_requests)
+from Memories.Profile import (
+    FIELDS as PROFILE_FIELDS,
+    context_text,
+    empty_profile,
+    find_field,
+    get_profile,
+    save_profile,
+    with_profile,
+)
+from Memories.Compression import context_window, estimate_tokens
 from Runtime.Personas import resolve_persona
 from Runtime.Parameters import (
     MAX_TEMPERATURE,
@@ -56,6 +68,11 @@ HELP_TEXT = """Available commands:
                                 (prepared by the assistant in the chat)
   /cancel                       drop it without doing anything
   /leaves                       list the leave requests you have filed
+  /leaves all                   HR accounts: list the leave requests of every employee
+  /leaves approve|refuse <n>    HR accounts: decide on request #n (pending <n> undoes it)
+  /profile [field [value]]      show your profile, or change one field
+                                (e.g. /profile role Consultante, /profile tone concise,
+                                /profile language clear, /profile clear to empty it)
   /ingest [folder]              index HR documents so answers can use them (default: data/docs)
   /cache [clear]                show the semantic cache, or empty it
   /export [md|json|pdf]         save this conversation to a file in exports/ (default: md)
@@ -64,7 +81,7 @@ HELP_TEXT = """Available commands:
 
 Switching persona, model or any setting keeps the conversation history.
 /set is accepted as an alias of /settings.
-/conges is accepted as an alias of /leaves,
+/conges is accepted as an alias of /leaves, /profil of /profile,
 /confirmer and /annuler as aliases of /confirm and /cancel."""
 EXPORTS_DIR = Path(__file__).resolve().parents[1] / "exports"
 
@@ -101,15 +118,31 @@ class Session:
     # [A3] Critical action prepared by the agent, waiting for /confirm or /cancel.
     # Kept here, on the server side: the user only confirms, never sends the fields back.
     pending_action: PendingAction | None = None
+    # E-mail of the account: removed from anything the web tools send (Tools/privacy.py)
+    email: str | None = None
+    # [M1] The user's profile (Memories/Profile.py), read again at every turn
+    profile: dict | None = None
+    # [M1] Role of the account (Memories/Auth.py), set at its creation. The least rights by default.
+    account_role: str = ROLE_EMPLOYEE
 
     @property
     def persona(self) -> dict:
         return self.personas[self.persona_id]
 
+    @property
+    def system_prompt(self) -> str:
+        """[M1] The system prompt of the active persona, followed by the user's profile."""
+        return with_profile(self.persona["system_prompt"], self.profile)
+
     def model_options(self) -> dict:
         """seed / num_predict to send to Ollama (only those that are set).
         The temperature travels on its own, like before."""
         return generation_options(self.seed, self.num_predict)
+
+    def ollama_options(self) -> dict:
+        """The options of every chat call: the user's settings, plus the context window that
+        fits the token budget (Memories/Compression.py), never left to Ollama's default."""
+        return {**self.model_options(), "num_ctx": context_window(self.num_predict)}
 
 
 def prompt_new_conversation_title() -> str | None:
@@ -269,21 +302,120 @@ def cancel_pending_action(session: Session) -> None:
     print(f"Dropped: {title}. Nothing was done.")
 
 
-def print_leave_requests(session: Session) -> None:
+HR_COMMANDS = {"approve": STATUS_APPROVED, "refuse": STATUS_REFUSED, "pending": STATUS_PENDING}
+
+
+def decide_from_cli(session: Session, word: str, number: str) -> None:
+    """[M1] /leaves approve|refuse|pending <number>, for an HR account only."""
+    if session.account_role != ROLE_HR:
+        print("Error: only HR accounts can decide on leave requests.")
+        return
+    if not number.lstrip("#").isdigit():
+        print(f"Usage: /leaves {word} <request number> (see them with /leaves all)")
+        return
     try:
-        requests_ = list_leave_requests(session.user_id)
+        request = decide_leave_request(int(number.lstrip("#")), HR_COMMANDS[word], session.user_id)
+    except (ValueError, LookupError, PermissionError, sqlite3.Error) as e:
+        print(f"Error: {e}.")
+        return
+    print(f"Leave request #{request['id']} of {request['user_id']} is now "
+          f"{STATUS_LABELS[request['status']].lower()}.")
+
+
+def print_leave_requests(session: Session, argument: str = "") -> None:
+    """Your own requests; with "all", every employee's, for an HR account only [M1].
+    HR also decides: /leaves approve|refuse|pending <number>."""
+    word, _, number = argument.strip().partition(" ")
+    if word.lower() in HR_COMMANDS:
+        decide_from_cli(session, word.lower(), number.strip())
+        return
+    everyone = argument.strip().lower() == "all"
+    if everyone and session.account_role != ROLE_HR:
+        print("Error: only HR accounts can see the leave requests of every employee.")
+        return
+    try:
+        requests_ = list_all_leave_requests() if everyone else list_leave_requests(session.user_id)
     except sqlite3.Error as e:
-        print(f"Error: could not read your leave requests ({e}).")
+        print(f"Error: could not read the leave requests ({e}).")
         return
 
-    print("=== Your leave requests ===")
+    print("=== Leave requests of every employee ===" if everyone else "=== Your leave requests ===")
     if not requests_:
-        print("(none yet, ask Sensai in the chat, then type /confirm)")
+        print("(none yet)" if everyone else "(none yet, ask Sensai in the chat, then type /confirm)")
         return
     for r in requests_:
         reason = f" : {r['reason']}" if r["reason"] else ""
-        print(f"#{r['id']}  {r['start_date']} -> {r['end_date']}  "
-              f"{r['leave_type']}{reason}")
+        who = f"{r['user_id']}  " if everyone else ""
+        status = STATUS_LABELS.get(r.get("status") or STATUS_PENDING, r.get("status")).lower()
+        print(f"#{r['id']}  {who}{r['start_date']} -> {r['end_date']}  "
+              f"{r['leave_type']}  [{status}]{reason}")
+
+
+# ---------------------------------------------------------------------
+# [M1] Profile: who the user is, added to the system prompt of every turn
+# ---------------------------------------------------------------------
+
+PROFILE_CLEAR = ("clear", "none", "reset")
+PROFILE_HELP = ("Change a field with /profile <field> <value>, empty it with /profile <field> clear,\n"
+                "empty everything with /profile clear. Fields: "
+                + ", ".join(f"{f.name} ({'|'.join(f.choices)})" if f.choices else f.name for f in PROFILE_FIELDS)
+                + ".")
+
+
+def print_profile(session: Session) -> None:
+    profile = session.profile or empty_profile()
+    width = max(len(field.name) for field in PROFILE_FIELDS)
+    print("=== Your profile ===")
+    print(f"  {'account':<{width}}  {ROLE_LABELS.get(session.account_role, session.account_role)} "
+          f"(set when the account was created, cannot be changed)")
+    for field in PROFILE_FIELDS:
+        value = profile[field.name].replace("\n", "\n" + " " * (width + 4)) or "(not set)"
+        print(f"  {field.name:<{width}}  {value}")
+    text = context_text(profile)
+    if text:
+        print(f"Added to the instructions of every answer (~{estimate_tokens(text)} tokens).")
+    else:
+        print("Empty: tell Sensai who you are, it will adapt its answers.")
+    print(PROFILE_HELP)
+
+
+def profile_command(session: Session, argument: str) -> None:
+    if not argument:
+        print_profile(session)
+        return
+
+    name, _, value = argument.partition(" ")
+    value = value.strip()
+    clear_all = name.lower() in PROFILE_CLEAR and not value
+    field = None if clear_all else find_field(name)
+    if not clear_all and field is None:
+        print(f"Error: unknown profile field '{name}'.")
+        print(PROFILE_HELP)
+        return
+    if field is not None and not value:
+        print(f"{field.name}: {(session.profile or empty_profile())[field.name] or '(not set)'}")
+        return
+
+    try:
+        # From the database: the web interface may have changed it meanwhile.
+        profile = empty_profile() if clear_all else get_profile(session.user_id)
+        if field is not None:
+            profile[field.name] = "" if value.lower() in PROFILE_CLEAR else value
+        saved = save_profile(session.user_id, profile)
+    except ValueError as e:
+        print(f"Error: {e} {field.name} unchanged.")
+        return
+    except sqlite3.Error as e:
+        print(f"Error: could not save your profile ({e}).")
+        return
+
+    session.profile = saved
+    if clear_all:
+        print("Profile emptied. It applies to the next answers.")
+    elif saved[field.name]:
+        print(f"{field.name} set to \"{saved[field.name]}\". It applies to the next answers.")
+    else:
+        print(f"{field.name} emptied. It applies to the next answers.")
 
 
 def set_temperature(session: Session, requested: str) -> None:
@@ -433,7 +565,9 @@ def handle_command(session: Session, text: str) -> bool:
     elif command in ("/cancel", "/annuler"):
         cancel_pending_action(session)
     elif command in ("/leaves", "/conges"):
-        print_leave_requests(session)
+        print_leave_requests(session, argument)
+    elif command in ("/profile", "/profil"):
+        profile_command(session, argument)
     elif command == "/ingest":
         ingest_documents(argument)
     elif command == "/cache":

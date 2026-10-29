@@ -3,12 +3,18 @@ import json
 import argparse
 import os
 import getpass
+import sqlite3
 from dataclasses import dataclass, field
-from dotenv import load_dotenv
+
+from Runtime.Env import load_env, project_path
+
+# Before the project imports below: some of them read their settings when imported.
+load_env()
 
 from Memories.Database import init_db
-from Memories.Auth import get_or_create_user
+from Memories.Auth import ROLE_EMPLOYEE, email_of, get_or_create_user, role_of
 from Memories.Memory import save_message, load_history
+from Memories.Profile import context_text, get_profile
 from Memories.Compression import build_context, estimate_tokens
 from Memories.TokenLimit import (
     ACTION_BLOCK,
@@ -32,6 +38,8 @@ from Commands import Session, handle_command, select_conversation
 from rag.Attachments import SHARE_OF_ROOM, attachments_message, has_attachments
 from rag.Retriever import rag_message
 from Agents.Engine import generate_reply
+from Agents.ReAct import tool_calls_in_text
+from Agents.Router import asks_for_leave
 from Cache.Chat import CacheTurn, check as check_cache, hit_note, remember as remember_answer
 from Cache.Policy import has_substantive_history
 from Agents.Setup import build_registry
@@ -116,6 +124,10 @@ def call_ollama(base_url: str, model: str, messages: list,
     prompt_tokens = None
     completion_tokens = None
     started = False
+    # With tools offered, a reply that starts like JSON may be a tool call WRITTEN as text
+    # by a small model: it is held back, not streamed, until the end tells what it is.
+    tool_names = {(spec.get("function") or spec).get("name") for spec in tools or []}
+    held = None
     try:
         for line in response.iter_lines():
             if not line:
@@ -130,7 +142,12 @@ def call_ollama(base_url: str, model: str, messages: list,
                 return None
 
             content = chunk.get("message", {}).get("content", "")
-            if echo and content:
+            if (tool_names and held is None and not started and not full_reply.strip()
+                    and content.lstrip()[:1] in ("{", "}", "[", "]", "<", "`")):
+                held = ""
+            if held is not None:
+                held += content
+            elif echo and content:
                 if not started:
                     out.stream_start(prefix)
                     started = True
@@ -149,6 +166,15 @@ def call_ollama(base_url: str, model: str, messages: list,
         report("Error: connection interrupted while streaming.")
         return None
 
+    if held is not None:
+        written = [] if tool_calls else tool_calls_in_text(full_reply, tool_names)
+        if tool_calls or written:
+            # A tool call, not an answer: never shown, and not kept as the model's "thought".
+            tool_calls, full_reply = tool_calls or written, ""
+        elif echo and held:
+            out.stream_start(prefix)  # an ordinary answer after all (JSON, code...): shown at once
+            started = True
+            out.stream_token(held)
     if started:
         out.stream_end()  # saut de ligne final
     return Reply(full_reply, prompt_tokens, completion_tokens, tool_calls)
@@ -192,21 +218,42 @@ def login_flow() -> str:
             print(f"Error: {e2}")
             raise SystemExit(1)
 
-        print(f"Account created for {user['user_id']}.\n")
+        print(f"HR account created for {user['user_id']}. Employees create theirs on the web interface.\n")
         return user["user_id"]
 
 
 def add_documents(context: list[dict], user_input: str, ollama_url: str, conversation_id: int | None = None) -> None:
-    """Add the files joined to the conversation, then the HR documents relevant to `user_input`, within the token limit."""
+    """Add the files joined to the conversation, then the HR documents relevant to `user_input`, within the token limit.
+    They go INTO the system message, as described sections after the persona and the profile (the tool
+    guidance comes last). A second system message right before the question was read by small models as
+    the order of the turn: they stopped calling tools whenever an excerpt was found."""
     question = {"role": "user", "content": user_input}
     room = get_budget() - estimate_context_tokens(context + [question])
     attached = attachments_message(conversation_id, user_input, int(room * SHARE_OF_ROOM), ollama_url)
     if attached:
-        context.append(attached)
+        _add_to_system(context, attached["content"])
         room -= estimate_tokens(attached["content"])
-    documents = rag_message(user_input, room, ollama_url=ollama_url)
+    # A leave request is an action: excerpts about leave rules made small models explain the rules
+    # instead of preparing the request (docs/benchmarks/chat_models.md). The joined files are kept.
+    documents = None if asks_for_leave(user_input) else rag_message(user_input, room, ollama_url=ollama_url)
     if documents:
-        context.append(documents)
+        _add_to_system(context, documents["content"])
+
+
+def _add_to_system(context: list[dict], section: str) -> None:
+    """Append `section` to the system message (the first message), or start one."""
+    if context and context[0].get("role") == "system":
+        context[0] = {**context[0], "content": f"{context[0]['content']}\n\n{section}"}
+    else:
+        context.insert(0, {"role": "system", "content": section})
+
+
+def refresh_profile(session: Session) -> None:
+    """[M1] Load the user's profile from the database into the session."""
+    try:
+        session.profile = get_profile(session.user_id)
+    except sqlite3.Error:
+        pass  # keep the one already loaded: the profile must never block a turn
 
 
 def chat_turn(session: Session, user_input: str) -> bool:
@@ -223,6 +270,9 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # answered from the cache, BEFORE anything costly (compression, RAG search,
     # model call). Only self-contained, non time-sensitive questions qualify.
     # A chat with joined files never uses the cache: the answer depends on the files.
+    # [M1] The profile is read again at every turn: /profile or the web page may have
+    # changed it. It is part of the system prompt, so also of the cache fingerprint.
+    refresh_profile(session)
     cache_turn = CacheTurn() if has_attachments(session.conversation_id) else check_cache(session, user_input)
     if cache_turn.hit is not None:
         session.out.answer(cache_turn.hit.answer)
@@ -234,7 +284,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
     had_history = has_substantive_history(load_history(session.conversation_id))
     context = build_context(
         session.conversation_id,
-        session.persona["system_prompt"],
+        session.system_prompt,
         session.model,
         session.ollama_url,
     )
@@ -345,7 +395,7 @@ def build_parser(description: str = "Sensai CLI chatbot") -> argparse.ArgumentPa
 def build_session(args, user_id: str, conversation_id: int) -> Session:
     """The Session of a logged-in user, from the command-line options.
     Configuration problems are printed as warnings and replaced by defaults."""
-    default_prompt = load_system_prompt(args.system_prompt)
+    default_prompt = load_system_prompt(project_path(args.system_prompt))
     if default_prompt:
         print(f"[System prompt loaded from {args.system_prompt}]")
     else:
@@ -353,7 +403,7 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
         print(f"[No system prompt found at {args.system_prompt}, "
               f"using a built-in default for the default persona]")
 
-    personas, warnings = load_personas(args.personas_dir, default_prompt)
+    personas, warnings = load_personas(project_path(args.personas_dir), default_prompt)
     for warning in warnings:
         print(f"[Warning: {warning}]")
 
@@ -384,7 +434,7 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
         persona_id=persona_id,
         personas=personas,
         ollama_url=args.ollama_url,
-        search_motor="tavily",
+        search_motor=os.getenv("SEARCH_ENGINE", "tavily").strip().lower() or "tavily",
         token_limit_action=token_limit_action,
         show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
         temperature=temperature,
@@ -392,7 +442,10 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
         num_predict=num_predict,
         tools_enabled=parse_bool(os.getenv("AGENT_TOOLS"), True),
         show_tool_activity=parse_bool(os.getenv("AGENT_SHOW_ACTIVITY"), True),
+        email=email_of(user_id),
+        account_role=role_of(user_id) or ROLE_EMPLOYEE,
     )
+    refresh_profile(session)
     if session.tools_enabled:
         try:
             session.tools = build_registry(session)
@@ -402,7 +455,6 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
 
 
 def main():
-    load_dotenv()
     init_db()
     args = build_parser().parse_args()
 
@@ -414,6 +466,11 @@ def main():
     if history_count:
         print(f"[{history_count} previous message(s) in this conversation; "
               f"context will be compressed automatically if needed]")
+
+    if context_text(session.profile):
+        print("[Your profile is added to every answer: /profile to see or change it]")
+    else:
+        print("[No profile yet: /profile to tell Sensai who you are (job, language, tone...)]")
 
     print(f"\nChatbot ready (model: {session.model}, persona: {session.persona['name']}, "
           f"temperature: {describe_temperature(session.temperature)}). "

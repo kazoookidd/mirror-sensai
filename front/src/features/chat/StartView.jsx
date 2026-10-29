@@ -36,8 +36,8 @@ export function StartView({ composer, onSuggestion }) {
       </div>
       <p className={`privacy-note ${styles.privacy}`}>
         <Icon name="cpu" size={14} />
-        <span className="desktop-only">Local model · HR data stays on your machine</span>
-        <span className="mobile-only">Local model · HR data stays on this device</span>
+        <span className="desktop-only">Local model · chats and documents stay on this machine</span>
+        <span className="mobile-only">Local model · chats and documents stay local</span>
       </p>
     </div>
   );

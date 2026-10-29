@@ -21,7 +21,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from Agents import Engine
-from Agents.Router import asks_for_search, should_offer_tools
+from Agents.Router import asks_for_date, asks_for_leave, asks_for_search, should_offer_tools
 from Agents.Tooling import Tool, ToolRegistry
 from Chatbot import chat_turn
 from Commands import Session
@@ -69,6 +69,62 @@ class TestRouter(unittest.TestCase):
         for text in ("Quelle est la dernière version de Python ?", "Merci, et pour le télétravail ?",
                      "hello, what is the minimum wage in France in 2026?"):
             self.assertTrue(should_offer_tools(text), text)
+
+
+class TestDateQuestion(unittest.TestCase):
+    def test_date_questions_are_detected_and_get_no_tools(self):
+        for text in ("on est quel jour ?", "On est quel jour aujourd'hui", "quel jour sommes-nous ?",
+                     "c'est quel jour ?", "quelle est la date ?", "la date d'aujourd'hui stp",
+                     "What day is it?", "what's the date today"):
+            self.assertTrue(asks_for_date(text), text)
+            self.assertFalse(should_offer_tools(text), text)
+
+    def test_questions_about_other_days_are_not(self):
+        for text in ("Quels jours fériés en 2026 ?", "Combien de jours pour un mariage ?",
+                     "quel jour tombe le 14 juillet 2027 ?", "date limite pour poser mes congés ?"):
+            self.assertFalse(asks_for_date(text), text)
+
+    def test_a_leave_action_is_never_served_nor_stored_by_the_cache(self):
+        from Cache import Policy
+        text = "Pose moi un jour de congé : je commence le 3 Novembre 2026 et je termine le 6 Novembre 2026"
+        self.assertFalse(Policy.may_serve(text))
+        self.assertFalse(Policy.may_store(text, "Une longue réponse qui explique la règle des congés.",
+                                          used_tools=False, had_history=False))
+
+    def test_the_context_window_fits_the_budget_the_tools_and_the_answer(self):
+        with mock.patch.object(Compression, "DEFAULT_BUDGET", 4000):
+            self.assertEqual(Compression.context_window(), 7168)       # 4000 + 1536 + 1024, rounded up
+            self.assertEqual(Compression.context_window(300), 6144)
+        with mock.patch.object(Compression, "DEFAULT_BUDGET", 8000):
+            self.assertEqual(Compression.context_window(1024), 11264)
+
+    def test_a_date_question_is_never_served_nor_stored_by_the_cache(self):
+        from Cache import Policy
+        for text in ("quelle est la date ?", "what's the date"):
+            self.assertFalse(Policy.may_serve(text), text)
+
+
+class TestLeaveRequest(unittest.TestCase):
+    def test_leave_requests_are_detected(self):
+        for text in ("Je pose du 3 au 7 novembre pour des vacances", "je prends lundi en congé", "je pose lundi", "Je voudrais poser 2 jours de RTT",
+                     "j'aimerais prendre mes congés la semaine du 14", "Pose-moi vendredi en congé",
+                     "I'm taking Monday off", "I want to book a day off on Friday"):
+            self.assertTrue(asks_for_leave(text), text)
+
+    def test_questions_about_leave_are_not(self):
+        for text in ("Comment poser un congé ?", "Combien de jours de congé pour un mariage ?",
+                     "Est-ce que je peux poser des congés pendant ma période d'essai ?",
+                     "Je prends le train demain, quel temps fera-t-il ?", "Quels jours fériés en 2026 ?"):
+            self.assertFalse(asks_for_leave(text), text)
+
+    def test_a_leave_request_gets_no_hr_excerpts(self):
+        import Chatbot
+        context = [{"role": "system", "content": "s"}]
+        with mock.patch.object(Chatbot, "rag_message") as rag:
+            Chatbot.add_documents(context, "Je pose du 3 au 7 novembre 2026 pour des vacances.", "http://x")
+            rag.assert_not_called()
+            Chatbot.add_documents(context, "Combien de jours pour un mariage ?", "http://x")
+            rag.assert_called_once()
 
 
 class TestSearchRequest(unittest.TestCase):
@@ -190,7 +246,8 @@ class TestEngine(unittest.TestCase):
                          [{"content": "done"}]]
         self.turn(self.session(seed=42, num_predict=50, temperature=0.3), "Quelle est la dernière version de Python ?")
         for request in Fake.received:
-            self.assertEqual(request["options"], {"seed": 42, "num_predict": 50, "temperature": 0.3})
+            self.assertEqual(request["options"], {"seed": 42, "num_predict": 50, "temperature": 0.3,
+                                                  "num_ctx": Compression.context_window(50)})
 
     def test_tool_activity_line_can_be_hidden(self):
         Fake.scripted = [[{"content": "", "tool_calls": [call("search_internet", {"query": "x"})]}],
@@ -222,6 +279,61 @@ class TestEngine(unittest.TestCase):
         self.assertFalse(done)
         self.assertEqual(out.count("cannot connect to Ollama"), 1)
         self.assertEqual(load_history(self.conversation_id), [])
+
+    def test_a_tool_call_written_as_text_runs_the_tool_and_is_never_shown(self):
+        # What llama3.2:1b really sends: a copy of the tool spec, in the content, with the values in "parameters".
+        # It also forgets its last closing brace.
+        written = json.dumps({"type": "function", "function": {"name": "search_internet", "description": "Search",
+                                                              "parameters": {"query": "smic 2026"}}})[:-1]
+        Fake.scripted = [[{"content": written[:20]}, {"content": written[20:]}], [{"content": "Le SMIC est de..."}]]
+        done, out = self.turn(self.session(), "Quel est le montant du SMIC en 2026 ?")
+        self.assertTrue(done)
+        self.assertEqual(self.searches, ["smic 2026"])
+        self.assertNotIn('"function"', out)
+        self.assertIn("Assistant: Le SMIC est de...", out)
+        self.assertEqual(load_history(self.conversation_id)[-1]["content"], "Le SMIC est de...")
+
+    def test_a_date_question_gets_no_tools_but_the_date(self):
+        from datetime import date
+        Fake.scripted = [[{"content": "Nous sommes jeudi."}]]
+        self.turn(self.session(), "on est quel jour ?")
+        self.assertNotIn("tools", Fake.received[0])
+        from datetime import timedelta
+        system = Fake.received[0]["messages"][0]["content"]
+        self.assertIn(f"Today is {date.today():%A} {date.today().isoformat()}", system)
+        self.assertIn(f"tomorrow is {date.today() + timedelta(days=1):%A}", system)
+
+    def test_json_left_over_next_to_a_real_tool_call_is_never_shown(self):
+        # llama3.2:1b: Ollama extracts one call, the rest of the JSON stays in the content.
+        leftover = '}\n{"type":"function","function":{"name":"read_webpage","description":"Read"}}'
+        Fake.scripted = [[{"content": leftover, "tool_calls": [call("search_internet", {"query": "smic"})]}],
+                         [{"content": "Le SMIC est de..."}]]
+        done, out = self.turn(self.session(), "Quel est le montant du SMIC en 2026 ?")
+        self.assertTrue(done)
+        self.assertEqual(self.searches, ["smic"])
+        self.assertNotIn('"function"', out)
+
+    def test_a_streamed_reply_the_agent_drops_is_retracted_in_the_web(self):
+        import queue
+        from Memories.Memory import save_message
+        from Web.Output import SseOutput
+        old = "Je suis désolé, mais je ne peux pas faire de recherches en temps réel sur Internet."
+        save_message(self.conversation_id, "user", "q1"); save_message(self.conversation_id, "assistant", old)
+        Fake.scripted = [[{"content": old}], [{"content": "Voici les étapes."}]]
+        events = queue.Queue()
+        self.turn(self.session(out=SseOutput(events)), "Comment mettre en place le télétravail ?")
+        names = []
+        while not events.empty():
+            names.append(events.get()[0])
+        self.assertIn("retract", names)
+        self.assertGreater(names.index("token", names.index("retract")), names.index("retract"))  # the new answer follows
+
+    def test_an_answer_that_is_json_but_not_a_tool_call_is_still_shown(self):
+        Fake.scripted = [[{"content": '{"jours"'}, {"content": ': 4}'}]]
+        done, out = self.turn(self.session(), "Donne la réponse en JSON")
+        self.assertTrue(done)
+        self.assertIn('Assistant: {"jours": 4}', out)
+        self.assertEqual(len(Fake.received), 1)
 
 
 if __name__ == "__main__":

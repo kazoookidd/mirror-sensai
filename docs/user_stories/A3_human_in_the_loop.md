@@ -82,3 +82,21 @@ Critères d'acceptation :
 - « Confirm » enregistre la demande (« Leave request #… saved ») et la carte disparaît ; « Cancel » l'abandonne sans rien enregistrer
 - Taper `/confirm` ou `/cancel` dans le composer a le même effet et fait aussi disparaître la carte
 - Après un rechargement de la page, la carte d'une demande encore en attente est toujours là
+
+**US-A3-06** En tant que collaborateur, je veux annuler une demande de congé en le disant dans le chat, afin de corriger une erreur sans passer par le service RH.
+
+Critères d'acceptation :
+
+- « Annule mon congé du 3 novembre » : l'agent appelle l'outil critique `cancel_leave_request` avec le premier jour du congé, et rien n'est annulé avant `/confirm`
+- La demande est cherchée uniquement parmi mes demandes en attente : l'utilisateur vient de la session, jamais des arguments du modèle ; la demande d'un collègue n'est jamais trouvée
+- Le plan affiche la demande trouvée (numéro, type, dates, motif) ; `/confirm` la passe au statut « cancelled », elle n'est jamais effacée
+- Aucune demande ce jour-là, ou une date invalide : l'erreur revient au modèle, qui me demande de préciser ; un double `/confirm` ne change rien
+- Une question (« Comment annuler un congé ? ») n'est pas prise pour une demande d'annulation
+
+**US-A3-07** En tant que collaborateur, je veux que le type de congé préparé corresponde à ce que j'ai dit, afin de ne pas confirmer un « arrêt maladie » pour un deuil.
+
+Critères d'acceptation :
+
+- Le type est une liste fermée (`enum`) dans la définition de l'outil, chaque type avec quelques mots d'explication (`bereavement = décès d'un proche, deuil`)
+- « Raison : deuil de proche » ou « décès de mon grand-père » donne `bereavement`
+- Un type hors de la liste est refusé par l'outil et l'erreur revient au modèle

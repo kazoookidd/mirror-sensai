@@ -11,7 +11,11 @@ exactly as the terminal does. Usage (from the project root):
 import os
 import uvicorn
 
-from dotenv import load_dotenv
+from Runtime.Env import load_env
+
+# Before the project imports below: some of them read their settings when imported.
+load_env()
+
 from Chatbot import build_parser
 from Memories.Database import init_db
 from Web.App import create_app
@@ -38,7 +42,6 @@ def build_web_parser():
 
 
 def main():
-    load_dotenv()
     init_db()
     args = build_web_parser().parse_args()
     print(f"Sensai web interface: http://{args.host}:{args.port} (Ctrl+C to stop)")

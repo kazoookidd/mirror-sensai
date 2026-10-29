@@ -17,7 +17,7 @@ Storing (the ANSWER must be reusable):
 
 import re
 
-from Agents.Router import asks_for_search
+from Agents.Router import asks_for_date, asks_for_leave, asks_for_search
 
 MIN_WORDS = 3
 MIN_CHARS = 12
@@ -71,11 +71,13 @@ def has_substantive_history(history: list[dict]) -> bool:
 
 
 def question_is_time_sensitive(text: str) -> bool:
-    return _TIME_SENSITIVE.search(text) is not None or asks_for_search(text)
+    return _TIME_SENSITIVE.search(text) is not None or asks_for_search(text) or asks_for_date(text)
 
 
 def may_serve(question: str) -> bool:
-    return question_is_self_contained(question) and not question_is_time_sensitive(question)
+    # Filing or cancelling a leave is an action: its right answer is a tool call, never a stored text.
+    return (question_is_self_contained(question) and not question_is_time_sensitive(question)
+            and not asks_for_leave(question))
 
 
 def may_store(question: str, answer: str, *, used_tools: bool, had_history: bool,

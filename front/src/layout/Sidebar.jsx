@@ -12,7 +12,7 @@ import { useApp } from "../context/AppContext.jsx";
 import { useConversationActions } from "../features/history/useConversationActions.js";
 import { cx } from "../lib/cx.js";
 import { RecentChat } from "./RecentChat.jsx";
-import { SECTIONS } from "./sections.js";
+import { sectionsFor } from "./sections.js";
 import styles from "./Sidebar.module.css";
 
 const RECENT_COUNT = 12;
@@ -46,7 +46,7 @@ export function Sidebar() {
       </div>
 
       <nav className={styles.nav} aria-label="Main navigation">
-        {SECTIONS.map((section) => (
+        {sectionsFor(user).map((section) => (
           <NavLink key={section.id} to={section.to} className={styles.navItem}>
             <Icon name={section.icon} size={section.sidebarIcon} display={16} />{section.label}
           </NavLink>
