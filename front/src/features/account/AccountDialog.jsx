@@ -1,4 +1,3 @@
-import { TestTag } from "../../components/feedback/TestTag/TestTag.jsx";
 import { Dialog } from "../../components/ui/Dialog/Dialog.jsx";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { cx } from "../../lib/cx.js";
@@ -8,7 +7,7 @@ import styles from "./AccountDialog.module.css";
 
 const TABS = [
   { id: "settings", label: "Settings", icon: "settings", subtitle: "Configuration of SENSAI on this machine." },
-  { id: "profile", label: "Profile", icon: "users", subtitle: "This information is added to the context of every new chat." },
+  { id: "profile", label: "Profile", icon: "users", subtitle: "This information is added to the context of every answer." },
 ];
 
 export function AccountDialog({ tab, onTab, onClose }) {
@@ -26,7 +25,7 @@ export function AccountDialog({ tab, onTab, onClose }) {
       </nav>
       <div className={styles.content}>
         <header className={styles.header}>
-          <h2 className={cx("text-heading", styles.title)}>{current.label}{tab === "profile" && <TestTag />}</h2>
+          <h2 className={cx("text-heading", styles.title)}>{current.label}</h2>
           <p className="text-small text-secondary">{current.subtitle}</p>
         </header>
         {tab === "settings" ? <SettingsSections /> : <ProfileForm onCancel={onClose} />}
