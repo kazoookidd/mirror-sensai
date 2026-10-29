@@ -72,7 +72,8 @@ Critères d'acceptation :
 
 Critères d'acceptation :
 
-* À partir de 1024 px de large, une barre latérale à gauche donne accès à Chat, Documents, History, aux conversations récentes et au modèle ; un clic sur mon compte ouvre un menu (Profile, Settings, Log out) et Profile ou Settings s'ouvrent dans une fenêtre au-dessus de la page, fermée par Échap, ✕ ou un clic à côté
+* À partir de 1024 px de large, une barre latérale à gauche donne accès à Chat, My files (employé) ou au groupe HR (Knowledge base, Leave requests), History (avec le modèle de la dernière réponse de chaque discussion), aux conversations récentes et au modèle ; un clic sur mon compte ouvre un menu (Profile, Settings, Log out) et Profile ou Settings s'ouvrent dans une fenêtre au-dessus de la page, fermée par Échap, ✕ ou un clic à côté
+* Un compte RH porte un badge « HR » à côté de son nom (barre latérale) ou du logo (téléphone, tablette) ; Settings indique « HR account » ou « employee account »
 * En dessous, une barre d'application en haut et une barre d'onglets en bas la remplacent ; « Log out » est dans Settings, carte Account
 * Passer d'un onglet à l'autre fait glisser la page dans le sens de l'onglet ; sur téléphone, un glissement du doigt change d'onglet
 * Aucune page ne défile horizontalement, du téléphone 360 px à l'écran 1440 px

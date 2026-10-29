@@ -8,7 +8,7 @@ sur la même machine que les [modèles de chat](chat_models.md) (Ryzen 7 8840HS,
 **En bref :** les deux trouvent le bon document pour toutes les questions, mais `bge-m3` le met
 plus souvent en premier et **sépare beaucoup mieux une bonne réponse d'une question hors sujet**.
 Avec `nomic-embed-text`, le seuil actuel (0,70) prive déjà 5 questions sur 22 de leurs extraits.
-Changer de modèle demande de changer les seuils : rien n'a été changé pour l'instant.
+Changer de modèle demande de changer les seuils : voir [ce qui a été appliqué](#ce-qui-a-été-appliqué-29-octobre-2026).
 
 ## La méthode
 
@@ -76,24 +76,39 @@ Pour reproduire : `python back/benchmarks/Bench_embeddings.py nomic-embed-text b
   Le seuil de 0,92 évite les fausses réponses, mais le cache ne sert presque jamais une
   reformulation. Avec bge-m3, l'ordre est le bon (même sens 0,83 en médiane, sens différent
   0,78 au plus) : un seuil vers **0,80** servirait la plupart des reformulations sans fausse
-  réponse sur ces paires.
+  réponse sur ces paires, mais pas sur des questions à un mot près (voir plus bas).
 - **Coût** : bge-m3 pèse 1,2 Go en mémoire (contre 274 Mo), indexe deux fois plus lentement
   (38 s pour tous les documents, une seule fois) et cherche en 37 ms au lieu de 18 : invisible
   à côté des 10 s du modèle de chat.
 
-## Recommandation (non appliquée)
+## Ce qui a été appliqué (29 octobre 2026)
 
-Passer à `bge-m3`, avec :
+`bge-m3` est le modèle par défaut, pour le RAG et pour le cache, avec :
 
 ```env
 RAG_EMBED_MODEL=bge-m3
 RAG_MIN_SCORE=0.50
 CACHE_EMBED_MODEL=bge-m3
-CACHE_SIMILARITY=0.80
+CACHE_SIMILARITY=0.92
 ```
 
-puis `/ingest` pour réindexer (le cache se vide à cette occasion). À faire en même temps que le
-choix du modèle de chat, et à vérifier dans le chat sur quelques questions avant la keynote.
+puis `/ingest` pour réindexer (le cache se vide à cette occasion). Les fichiers joints à une
+discussion avant le changement sont ré-encodés depuis leur texte à la question suivante.
+
+**Le seuil du cache reste à 0,92, pas 0,80.** Les 5 paires « sens différent » du banc changent de
+sujet (mariage / décès). Des questions qui ne diffèrent que d'un mot ou d'un chiffre montent plus haut, et à 0,80 elles recevraient la réponse de l'autre :
+
+| Paire (sens différent) | nomic-embed-text | bge-m3 |
+|---|---|---|
+| RTT en 2026 / RTT en 2025 | 0,967 | 0,876 |
+| télétravail 2 jours / 3 jours par semaine | 0,965 | 0,905 |
+| couleur rouge / bleue du logo | 0,950 | 0,836 |
+| congé payé / congé sans solde | 0,860 | 0,850 |
+| congé pour mon mariage / le mariage de mon enfant | 0,929 | 0,949 |
+
+À 0,92, nomic-embed-text servait la mauvaise réponse à 4 de ces paires, bge-m3 à une seule
+(le mariage de l'enfant). Le cache sert donc rarement une reformulation : c'est le prix d'une
+réponse RH juste.
 
 ## Limites du banc
 
