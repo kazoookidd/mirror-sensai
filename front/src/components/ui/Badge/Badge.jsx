@@ -24,3 +24,7 @@ export function StatusBadge({ status }) {
     </span>
   );
 }
+
+export function RoleBadge({ className }) {
+  return <span className={cx(styles.badge, styles.accent, className)} title="HR account">HR</span>;
+}

@@ -4,6 +4,7 @@ import { AccountDialog } from "./features/account/AccountDialog.jsx";
 import { LoginPage } from "./features/auth/LoginPage.jsx";
 import { ChatPage } from "./features/chat/ChatPage.jsx";
 import { DocumentsPage } from "./features/documents/DocumentsPage.jsx";
+import { MyFilesPage } from "./features/documents/MyFilesPage.jsx";
 import { ErrorBoundary } from "./features/errors/ErrorBoundary.jsx";
 import { SharedPage } from "./features/export/SharedPage.jsx";
 import { NotFoundPage } from "./features/errors/NotFoundPage.jsx";
@@ -11,6 +12,7 @@ import { HistoryPage } from "./features/history/HistoryPage.jsx";
 import { LeaveRequestsPage } from "./features/leaves/LeaveRequestsPage.jsx";
 import { ProfilePage } from "./features/profile/ProfilePage.jsx";
 import { SettingsPage } from "./features/settings/SettingsPage.jsx";
+import { isHr } from "./layout/sections.js";
 import { useMediaQuery } from "./lib/useMediaQuery.js";
 
 const WIDE = "(min-width: 1024px)";
@@ -44,9 +46,10 @@ function AppRoutes() {
     <>
       <Routes location={background ?? location}>
         <Route path="/chat/:id?" element={<ChatPage />} />
-        <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/documents" element={isHr(user) ? <DocumentsPage /> : <Navigate to="/files" replace />} />
+        <Route path="/files" element={<MyFilesPage />} />
         <Route path="/history" element={<HistoryPage />} />
-        <Route path="/leaves" element={<LeaveRequestsPage />} />
+        <Route path="/leaves" element={isHr(user) ? <LeaveRequestsPage /> : <Navigate to="/chat" replace />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/" element={<Navigate to="/chat" replace />} />

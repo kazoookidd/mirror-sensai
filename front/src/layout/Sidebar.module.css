@@ -51,6 +51,15 @@
   color: var(--color-accent-default);
 }
 
+.navGroup {
+  padding: var(--spacing-4) var(--spacing-3) var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+}
+
 .recent {
   display: flex;
   flex: 1;

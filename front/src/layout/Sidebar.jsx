@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { initials } from "../components/ui/Avatar/Avatar.jsx";
+import { RoleBadge } from "../components/ui/Badge/Badge.jsx";
 import { Brand } from "../components/ui/Brand/Brand.jsx";
 import { Button } from "../components/ui/Button/Button.jsx";
 import { Icon } from "../components/ui/Icon/Icon.jsx";
@@ -12,7 +13,7 @@ import { useApp } from "../context/AppContext.jsx";
 import { useConversationActions } from "../features/history/useConversationActions.js";
 import { cx } from "../lib/cx.js";
 import { RecentChat } from "./RecentChat.jsx";
-import { sectionsFor } from "./sections.js";
+import { isHr, sectionsFor } from "./sections.js";
 import styles from "./Sidebar.module.css";
 
 const RECENT_COUNT = 12;
@@ -46,10 +47,13 @@ export function Sidebar() {
       </div>
 
       <nav className={styles.nav} aria-label="Main navigation">
-        {sectionsFor(user).map((section) => (
-          <NavLink key={section.id} to={section.to} className={styles.navItem}>
-            <Icon name={section.icon} size={section.sidebarIcon} display={16} />{section.label}
-          </NavLink>
+        {sectionsFor(user).map((section, index, sections) => (
+          <Fragment key={section.id}>
+            {section.group && section.group !== sections[index - 1].group && <p className={styles.navGroup}>{section.group}</p>}
+            <NavLink to={section.to} className={styles.navItem}>
+              <Icon name={section.icon} size={section.sidebarIcon} display={16} />{section.label}
+            </NavLink>
+          </Fragment>
         ))}
       </nav>
 
@@ -72,6 +76,7 @@ export function Sidebar() {
             aria-haspopup="listbox" aria-expanded={open} onClick={toggle}>
             <span className={styles.avatar} aria-hidden="true">{initials(user.user_id)}</span>
             <span className={cx(styles.accountName, "truncate")}>{user.user_id}</span>
+            {isHr(user) && <RoleBadge />}
             <Icon name="chevron-down" size={16} className={styles.chevron} />
           </button>
         )} />
