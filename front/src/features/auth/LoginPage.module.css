@@ -223,6 +223,21 @@
   text-align: center;
 }
 
+.switch {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-default);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.switch:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
 .footer {
   display: flex;
   flex-wrap: wrap;
