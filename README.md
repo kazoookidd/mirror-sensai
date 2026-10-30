@@ -51,7 +51,7 @@ The use case: [docs/Scenario.md](docs/Scenario.md). The user stories of each fea
 
 ```bash
 ollama pull llama3.1            # or qwen2.5: models that support tool calling
-ollama pull nomic-embed-text    # embeddings (RAG and semantic cache)
+ollama pull bge-m3              # embeddings (RAG and semantic cache)
 ```
 
 The agent needs a model with **tool calling** (`llama3.1`, `qwen2.5`...). A model without it still
@@ -60,7 +60,7 @@ works: it answers without tools, after one dimmed note.
 Which model to pick on a laptop without GPU, measured on Sensai's own scenarios:
 [docs/benchmarks/chat_models.md](docs/benchmarks/chat_models.md) (`qwen2.5:3b` for live use, `qwen2.5:7b`
 for the best answers) and [docs/benchmarks/embedding_models.md](docs/benchmarks/embedding_models.md)
-(`bge-m3` finds the French HR passages better, with other thresholds). Both are reproduced by the scripts
+(why `bge-m3` is the embedding model: it finds the French HR passages better). Both are reproduced by the scripts
 of `back/benchmarks/`.
 
 ## Installation
@@ -78,7 +78,7 @@ cd sensai
 3. Install dependencies from `requirements.txt`
 4. Build the web interface (`front/dist`), if Node.js is installed
 5. Create a `.env` file from `.env.example` (if it doesn't already exist)
-6. Pull the embedding model `nomic-embed-text`, if Ollama is installed
+6. Pull the embedding model `bge-m3`, if Ollama is installed
 
 With Docker, nothing has to be installed except Docker itself: see [Quick start](#quick-start).
 
@@ -95,7 +95,7 @@ it asks for an email and a password. **Employee accounts** are created on the we
 on the login page. Both log in anywhere, with their user id or their email.
 
 With Docker, Ollama runs in its own container and the first start downloads `qwen2.5:3b` and
-`nomic-embed-text` (set `MODEL` in `.env` to use another model). The data lives in Docker volumes, apart
+`bge-m3` (set `MODEL` in `.env` to use another model). The data lives in Docker volumes, apart
 from the local `storage/sensai.db`, so create the account inside the container:
 
 ```bash
@@ -175,14 +175,14 @@ tokens: 27 in · 21 out
 | `/personas`, `/persona [id\|number]` | list the personas, switch persona (history is kept) |
 | `/models`, `/model [name\|number]` | list the models installed in Ollama, switch model |
 | `/temperature [value\|default]` | show or set how creative the answers are (0 to 2) |
-| `/settings [name [value]]` (`/set`) | list the settings or change one: `temperature`, `token-limit`, `token-usage`, `cache`, `seed`, `num-predict` |
+| `/settings [name [value]]` (`/set`) | list the settings or change one: `temperature`, `token-limit`, `token-usage`, `cache`, `documents`, `seed`, `num-predict` |
 | `/search`, `/switch_search [name\|number]` | list / switch the search engine (Brave, Tavily, Exa) |
 | `/confirm`, `/cancel` | go ahead with the action waiting for your approval, or drop it |
 | `/leaves` | list the leave requests you filed, with their status |
 | `/leaves all` | HR accounts: list the leave requests of every employee |
 | `/leaves approve\|refuse <n>` | HR accounts: decide on request #n (`/leaves pending <n>` undoes the decision) |
 | `/profile [field [value]]` | show your profile, or change one field (`/profile clear` empties it) |
-| `/ingest [folder]` | index HR documents for the RAG (also empties the semantic cache) |
+| `/ingest [folder]` | HR accounts: index HR documents for the RAG (also empties the semantic cache) |
 | `/cache [clear]` | show the semantic cache, or empty it |
 | `/export [md\|json\|pdf]` | save the conversation to a file in `exports/` (default: Markdown) |
 | `exit` | quit |
@@ -332,7 +332,7 @@ It is cautious on purpose, because a wrong cached answer is worse than a slow on
 - answers expire after 168 hours; `/ingest` empties the cache; `/cache clear` and `/settings cache off`
   are available at any time
 
-It needs the embedding model (`ollama pull nomic-embed-text`). If it is missing, one note is shown and the
+It needs the embedding model (`ollama pull bge-m3`). If it is missing, one note is shown and the
 cache is turned off for the session.
 
 ## Web interface ([X1])
@@ -355,6 +355,14 @@ The web interface is a front end over the same backend as the CLI: the server (`
 does. Only the output differs: the chat turn writes to `session.out` (`back/Runtime/Output.py`), which is
 the terminal for the CLI and a stream of Server-Sent Events for the browser.
 
+| Log in | An answer from the HR documents, with its source |
+| --- | --- |
+| ![Login page](docs/images/x1-login.png) | ![Chat answer citing an HR document](docs/images/r1-chat-answer-with-source.png) |
+| **Leave request waiting for confirmation ([A3])** | **History, with the model of each chat** |
+| ![Confirmation card of a leave request](docs/images/a3-confirmation-card.png) | ![History page](docs/images/x1-history.png) |
+
+<p align="center"><img src="docs/images/x1-mobile-chat-dark.png" alt="Chat on a phone, dark theme" width="260"></p>
+
 - Log in with your email or your user id. "Create an employee account" on the login page signs up a new employee
   (user id of 3 to 40 letters, digits, `.`, `_` or `-`; a valid email; a password of 8 characters at least) and
   logs them in. The role is always Employee: HR accounts are only created in the CLI.
@@ -362,13 +370,19 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
   `CONTEXT_TOKEN_BUDGET`. When the agent used tools, "Reasoning" above the answer opens its steps.
 - Model, persona, temperature and answer length are changed live, with the same checks as `/model`,
   `/persona` and `/settings` (persona: sidebar and Settings; the chat history is kept).
-- History: search, sort, rename, delete (also from the "⋯" menu of each recent chat in the sidebar).
-  Documents: the files of `data/docs`, whether they are indexed, and importing new ones (see the RAG section).
+- History: search, sort, rename, delete (also from the "⋯" menu of each recent chat in the sidebar), and the model of
+  the last answer of each chat. The "HR documents" switch of the composer turns the search in the HR documents off
+  and on (`/settings documents off|on` in the CLI); while it is off, the semantic cache is not used.
+  The sidebar depends on the account ([M1]). An employee has **My files**: the files they joined to their chats
+  (each one opens its chat, or is deleted after a confirmation) and the HR documents, read only. HR has an **HR** group: **Knowledge base** (the files
+  of `data/docs`, whether they are indexed, importing new ones, and renaming or deleting one from its "⋯" menu,
+  see the RAG section) and **Leave requests**. An HR account shows an **HR** badge next to its name (sidebar) or
+  next to the logo (phones and tablets).
 - Typing `/` in the composer lists the slash commands with what they do; they run on the same code as
   the CLI (`POST /api/command`), and the output is shown in the chat without being saved.
 - Desktop: a left sidebar (sections, recent chats, model, Ollama status). Clicking the account opens a
   menu (Profile, Settings, Log out); Profile and Settings open in a tabbed window over the current page.
-  Phones and tablets: a tab bar, with a swipe between Chat, Documents and History, and Settings and
+  Phones and tablets: a tab bar, with a swipe between the same sections, and Settings and
   Profile as full pages.
 - Export and Share above the chat (in the app bar on phones and tablets): download the chat shown as
   Markdown, JSON or PDF, or create a public link (`#/share/<token>`). The link opens without logging in,
@@ -389,23 +403,25 @@ the terminal for the CLI and a stream of Server-Sent Events for the browser.
   The section is only shown to HR accounts, and the server refuses the data to anyone else (403): hiding the menu
   is not the protection.
 
-Controls marked `[TEST]` are designed but not connected yet: querying a selection of documents, the menu of
-each document, sources under the answers, the documents toggle, and the model used by each past
-conversation.
+| Employee: My files | HR: Leave requests |
+| --- | --- |
+| ![My files page of an employee](docs/images/r1-my-files.png) | ![Leave requests page of an HR account](docs/images/m1-leave-requests-hr.png) |
+| **Export ([X3])** | **Public link ([X3])** |
+| ![Export menu](docs/images/x3-export-menu.png) | ![Read-only shared chat](docs/images/x3-shared-page.png) |
 
 The front end (`front/`) is React 18 with Vite, in JavaScript (JSX). Each component has its CSS Module
 next to it; only the design tokens, fonts and a few utilities are global (`src/styles/`):
 
 ```
 front/src/
-├── main.jsx, App.jsx    # entry point, routes (#/chat, #/documents, #/history, #/settings, #/profile, #/share), error screen
+├── main.jsx, App.jsx    # entry point, routes (#/chat, #/files, #/documents, #/leaves, #/history, #/settings, #/profile, #/share), error screen
 ├── context/             # AppContext: user, Ollama status, models, context gauge, recent chats
 ├── api/                 # every call to the backend: HTTP and streaming helpers, one file per domain
 ├── lib/                 # shared helpers: formats, theme, safe Markdown rendering
 ├── components/          # shared components: ui/ (Button, Field, Dialog...) and feedback/ (EmptyState...)
 ├── layout/              # AppShell, left sidebar, mobile app bar and tab bar, Page, slide transitions
 └── features/            # one folder per domain, with its pages and components:
-                         # auth, chat, export, ollama, personas, history, documents, settings, profile, account, errors
+                         # auth, chat, export, ollama, personas, history, documents, leaves, settings, profile, account, errors
 ```
 
 Front tests (Vitest, no server or Ollama needed) sit next to the file they test:
@@ -424,7 +440,7 @@ Everything runs locally: embeddings are computed by Ollama and stored in the SQL
 Pull the embedding model once:
 
 ```bash
-ollama pull nomic-embed-text
+ollama pull bge-m3
 ```
 
 Then, in the chatbot, index the documents of `data/docs` (or any folder):
@@ -438,11 +454,17 @@ Indexing .../data/docs... (can take a minute the first time)
 Run `/ingest` again after adding, editing or deleting documents: only changed files are
 processed again, and deleted files are removed from the index.
 
-In the web interface, **Documents > Import a document** (or a drop on the dashed zone) saves `.txt`, `.md` or
+![Knowledge base of an HR account](docs/images/r1-knowledge-base-hr.png)
+
+In the web interface, **Knowledge base > Import a document** (HR group of the sidebar) (or a drop on the dashed zone) saves `.txt`, `.md` or
 `.pdf` files of up to 10 MB in `data/docs` and runs the same indexing as `/ingest`, on this machine. A file
 with no readable text (a scanned PDF) is refused; if Ollama does not answer, the file is kept and indexed by
-the next import or `/ingest`. Any logged-in user can import: the base is shared by every account. Under
+the next import or `/ingest`. The base is shared by every account, so only **HR accounts** can import or run
+`/ingest` (checked by the server, 403 otherwise). An employee sees the list of documents and is pointed to the
+files joined to a chat below. Under
 Docker, `data/docs` is the `sensai_docs` volume, so imported files survive a rebuild.
+
+![A file joined to a chat](docs/images/r1-joined-file.png)
 
 **Files joined to one chat**: the paperclip of the composer joins `.txt`, `.md` or `.pdf` files (10 MB at most)
 to the current chat only. They go through the same pipeline but are stored apart (`rag/Attachments.py`):
@@ -478,7 +500,7 @@ do not answer": small models then refused leave requests and web searches whenev
 | -------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Load     | `back/rag/Loader.py`     | reads .txt / .md / .pdf files, keeps PDF page numbers                                                                  |
 | Chunk    | `back/rag/Chunker.py`    | splits text into ~500-token chunks with a 50-token overlap, at paragraph, sentence, line then word boundaries          |
-| Embed    | `back/rag/Embeddings.py` | turns each chunk into a vector with Ollama`/api/embed` (`nomic-embed-text`)                                            |
+| Embed    | `back/rag/Embeddings.py` | turns each chunk into a vector with Ollama`/api/embed` (`bge-m3`)                                                      |
 | Store    | `back/rag/Store.py`      | saves chunks and vectors in SQLite, re-embeds only new or modified files                                               |
 | Retrieve | `back/rag/Retriever.py`  | embeds the question, ranks chunks by cosine similarity, keeps the best ones above a threshold, within the token budget |
 
@@ -487,10 +509,10 @@ do not answer": small models then refused leave requests and web searches whenev
 
 | Variable            | Default            | Meaning                                               |
 | ------------------- | ------------------ | ----------------------------------------------------- |
-| `RAG_EMBED_MODEL`   | `nomic-embed-text` | Ollama model used for embeddings                      |
+| `RAG_EMBED_MODEL`   | `bge-m3`           | Ollama model used for embeddings                      |
 | `RAG_CHUNK_TOKENS`  | `500`              | chunk size, in estimated tokens                       |
 | `RAG_CHUNK_OVERLAP` | `50`               | overlap between two chunks, in estimated tokens       |
-| `RAG_MIN_SCORE`     | `0.70`             | minimum similarity (0 to 1) for an excerpt to be used |
+| `RAG_MIN_SCORE`     | `0.50`             | minimum similarity (0 to 1) for an excerpt to be used |
 | `RAG_TOP_K`         | `3`                | maximum number of excerpts per question               |
 
 Changing `RAG_EMBED_MODEL` or the chunk settings requires running `/ingest` again.
@@ -498,8 +520,9 @@ Changing `RAG_EMBED_MODEL` or the chunk settings requires running `/ingest` agai
 ### Limits
 
 - Scanned PDFs (images without text) are skipped: there is no OCR.
-- The 0.70 threshold was measured on the demo documents. With other documents or another
-  embedding model, measure it again.
+- The 0.50 threshold was measured with `bge-m3` on the demo documents
+  ([docs/benchmarks/embedding_models.md](docs/benchmarks/embedding_models.md)). With other documents or
+  another embedding model, measure it again (`nomic-embed-text` needs about 0.70).
 - Small chat models do not always cite the source of the excerpts in their answer.
 
 ## Project structure
@@ -573,5 +596,12 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 
 ## Roadmap
 
-Planned or open: input/output guardrails, telling the employee when HR decides, and the `[TEST]` controls of the
-web interface.
+Planned or open: input/output guardrails, telling the employee when HR decides, and an advanced RAG (the passages used under each answer, questions on a selection of documents).
+
+## Team
+
+| Name | Features |
+| --- | --- |
+| Deniz Demir | [R1] RAG (documents, files joined to a chat), [X1] web interface, [X2] branches and stopping an answer, [X3] export and public links |
+| Abdoul-Latif Wabi | [B1] CLI, [M1] accounts, history and profile, [M2] compression and token limit, [A1] ReAct agent, [A5] personas and models, [A6] semantic cache, [T3] web search, leave requests for HR, benchmarks |
+| Marc-Antoine Sadio | CI/CD, [A3] human in the loop (leave requests confirmed by the user), answer settings (temperature, seed, length) |

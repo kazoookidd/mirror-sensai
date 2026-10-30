@@ -170,6 +170,29 @@ def index_directory(folder: str | Path, db_path: str | None = None) -> dict:
     return stats
 
 
+def forget_document(folder: str | Path, source: str, db_path: str | None = None) -> None:
+    """Remove a document and its chunks from the index, without waiting for a full indexing run."""
+    init_rag_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute("DELETE FROM documents WHERE folder = ? AND source = ?", (str(Path(folder).resolve()), source))
+    finally:
+        conn.close()
+
+
+def rename_document(folder: str | Path, source: str, new_source: str, db_path: str | None = None) -> None:
+    """Give an indexed document its new file name: same text, so its vectors are kept."""
+    init_rag_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute("UPDATE documents SET source = ? WHERE folder = ? AND source = ?",
+                         (new_source, str(Path(folder).resolve()), source))
+    finally:
+        conn.close()
+
+
 def _document_status(path: Path, source: str, row, model: str) -> dict:
     """What the interface shows for one file: size, dates and index status."""
     if row is None:

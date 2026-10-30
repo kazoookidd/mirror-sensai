@@ -150,6 +150,7 @@ class ChatTurnTests(unittest.TestCase):
                               return_value=[{"role": "system", "content": "Tu es RH."}]),
             mock.patch.object(Chatbot, "generate_reply", side_effect=self._fake_reply),
             mock.patch.object(Chatbot, "save_message"),
+            mock.patch.object(Chatbot, "record_model"),
             mock.patch.object(Chatbot, "load_history", return_value=[]),
         ]
         for patcher in patches:
@@ -181,13 +182,25 @@ class ChatTurnTests(unittest.TestCase):
         rag.assert_called_once_with("Question ?", 100 - used, ollama_url="http://x")
         self.assertEqual(len(self.sent), 2)
 
+    def test_documents_switched_off_skip_the_search_and_the_cache(self):
+        self.assertEqual(Commands.apply_setting(self.session, Commands.find_setting("documents"), "off"), ("off", None))
+        with mock.patch.object(Chatbot, "rag_message") as rag, mock.patch.object(Chatbot, "check_cache") as cache, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(Chatbot.chat_turn(self.session, "Congé mariage ?"))
+        rag.assert_not_called()
+        cache.assert_not_called()
+        self.assertEqual(self.sent, [{"role": "system", "content": "Tu es RH."}, {"role": "user", "content": "Congé mariage ?"}])
+        Chatbot.record_model.assert_called_once_with(1, "m")
+
 
 class IngestCommandTests(unittest.TestCase):
-    def _run(self, text, stats):
+    def _run(self, text, stats, role=Commands.ROLE_HR):
+        session = Commands.Session(user_id="u", conversation_id=1, model="m", persona_id="default", personas={},
+                                   ollama_url="x", search_motor="tavily", account_role=role)
         output = io.StringIO()
         with mock.patch.object(Commands, "index_directory", return_value=stats) as index, \
              contextlib.redirect_stdout(output):
-            Commands.handle_command(None, text)
+            Commands.handle_command(session, text)
         return index, output.getvalue()
 
     def test_default_folder_and_summary(self):
@@ -207,6 +220,11 @@ class IngestCommandTests(unittest.TestCase):
         index, output = self._run("/ingest /no/such/folder", None)
         index.assert_not_called()
         self.assertIn("is not a folder", output)
+
+    def test_an_employee_cannot_change_the_shared_base(self):
+        index, output = self._run("/ingest", None, role=Commands.ROLE_EMPLOYEE)
+        index.assert_not_called()
+        self.assertIn("only HR accounts", output)
 
 
 if __name__ == "__main__":

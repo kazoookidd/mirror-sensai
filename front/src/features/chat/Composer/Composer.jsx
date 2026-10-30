@@ -14,7 +14,7 @@ const PLACEHOLDER = "Ask SENSAI a question...";
 const OFFLINE_PLACEHOLDER = "Connect Ollama to send a message";
 
 export const Composer = forwardRef(function Composer({ onSend, onStop, busy, attachments = [], attaching = {}, onAttach, className }, ref) {
-  const { ollama } = useApp();
+  const { ollama, hrDocuments, switchHrDocuments } = useApp();
   const [text, setText] = useState("");
   const [highlighted, setHighlighted] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -100,8 +100,10 @@ export const Composer = forwardRef(function Composer({ onSend, onStop, busy, att
             onClick={() => picker.current.click()} />
           <input ref={picker} type="file" accept={ACCEPTED} multiple hidden aria-label="Choose files to attach"
             onChange={(event) => { onAttach([...event.target.files]); event.target.value = ""; }} />
-          <button className={styles.knowledge} type="button" disabled aria-pressed="false" data-test-corner=""
-            title="[TEST] Turn the HR documents on or off: not available yet (they are always searched)">
+          <button className={styles.knowledge} type="button" aria-pressed={hrDocuments} disabled={busy}
+            title={hrDocuments ? "HR documents are searched for each question: click to answer without them"
+              : "HR documents are not searched: click to search them again"}
+            onClick={() => switchHrDocuments(!hrDocuments).catch(() => {})}>
             <Icon name="database" size={16} /><span className="truncate">HR documents</span>
           </button>
         </div>

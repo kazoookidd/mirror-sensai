@@ -84,7 +84,10 @@ class SseOutput:
         self._emit("confirmation", title=title, plan=plan)
 
 
-def pending_confirmation(session) -> dict | None:
-    """[A3] The action waiting for /confirm or /cancel, as the confirmation card shows it."""
+def pending_confirmation(session, conversation_id: int | None) -> dict | None:
+    """[A3] The action waiting for /confirm or /cancel, as the card of `conversation_id` shows it:
+    None in any other chat, or its card would sit on an answer it has nothing to do with."""
     pending = session.pending_action
-    return {"title": pending.title, "plan": pending.plan} if pending else None
+    if pending is None or pending.conversation_id != conversation_id:
+        return None
+    return {"title": pending.title, "plan": pending.plan}

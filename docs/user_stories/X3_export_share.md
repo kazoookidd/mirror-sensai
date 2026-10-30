@@ -44,3 +44,13 @@ Critères d'acceptation :
 * Créer un nouveau lien pour la même discussion coupe l'ancien
 * Supprimer la discussion supprime aussi ses liens
 * Le jeton du lien est long et aléatoire (`secrets`), impossible à deviner à partir de l'identifiant de la discussion
+
+## Captures d'écran
+
+| Export (Markdown, JSON, PDF) | Création du lien public |
+| --- | --- |
+| ![Menu Export](../images/x3-export-menu.png) | ![Fenêtre Share](../images/x3-share-dialog.png) |
+
+La page publique, ouverte sans connexion, en lecture seule :
+
+![Discussion partagée](../images/x3-shared-page.png)

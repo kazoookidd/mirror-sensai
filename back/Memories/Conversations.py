@@ -22,7 +22,7 @@ def list_conversations(user_id: str) -> list[dict]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT id, title, created_at, updated_at FROM conversations "
+            "SELECT id, title, created_at, updated_at, model FROM conversations "
             "WHERE user_id = ? ORDER BY updated_at DESC",
             (user_id,)
         ).fetchall()
@@ -53,6 +53,16 @@ def rename_conversation(conversation_id: int, new_title: str) -> None:
             "WHERE id = ?",
             (new_title, conversation_id)
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_model(conversation_id: int, model: str) -> None:
+    """Remember the model that wrote the last answer of the conversation."""
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE conversations SET model = ? WHERE id = ?", (model, conversation_id))
         conn.commit()
     finally:
         conn.close()

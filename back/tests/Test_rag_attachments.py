@@ -97,6 +97,34 @@ class AttachmentTests(unittest.TestCase):
             self.join("contrat.md", "Congés : 25 jours.")
         self.assertEqual(Attachments.list_attachments(self.conversation), [])
 
+    def test_a_file_joined_under_another_embedding_model_is_embedded_again_from_its_text(self):
+        self.join("contrat.md", "Congés : 25 jours.")
+        with mock.patch.object(Attachments, "embed_model", return_value="new"), \
+                mock.patch.object(Attachments, "embed_documents", return_value=None):
+            self.assertIsNone(Attachments.attachments_message(self.conversation, "congés ?", 1000))  # Ollama down
+        with mock.patch.object(Attachments, "embed_model", return_value="new"):
+            message = Attachments.attachments_message(self.conversation, "congés ?", 1000)
+            self.assertIn("Congés : 25 jours.", message["content"])
+            calls = Attachments.embed_documents.call_count
+            Attachments.attachments_message(self.conversation, "congés ?", 1000)
+            self.assertEqual(Attachments.embed_documents.call_count, calls)  # done once
+
+    def test_a_file_is_deleted_with_its_chunks_only_by_its_owner(self):
+        kept = self.join("contrat.md", "Congés : 25 jours.")
+        gone = self.join("avenant.md", "Prime : 35 euros.")
+        create_user("bob", "bob@example.com", "pw")
+        self.assertFalse(Attachments.detach("bob", gone["id"]))
+        self.assertTrue(Attachments.detach("alice", gone["id"]))
+        self.assertFalse(Attachments.detach("alice", gone["id"]))
+        self.assertEqual([item["id"] for item in Attachments.list_attachments(self.conversation)], [kept["id"]])
+        message = Attachments.attachments_message(self.conversation, "prime ?", 1000)
+        self.assertNotIn("35 euros", message["content"])
+        conn = Database.get_connection()
+        try:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM attachment_chunks WHERE attachment_id = ?", (gone["id"],)).fetchone()[0], 0)
+        finally:
+            conn.close()
+
     def test_branches_share_the_files_and_deleting_the_conversation_deletes_them(self):
         save_message(self.conversation, "user", "Q1")
         save_message(self.conversation, "assistant", "A1")

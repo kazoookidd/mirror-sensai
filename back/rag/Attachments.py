@@ -60,6 +60,11 @@ _LIST = """
     FROM attachments a LEFT JOIN attachment_chunks c ON c.attachment_id = a.id
     WHERE a.conversation_id = ? GROUP BY a.id ORDER BY a.id
 """
+_LIST_FOR_USER = """
+    SELECT a.id, a.source, a.size, a.created_at, c.id AS conversation_id, c.title AS conversation_title
+    FROM attachments a JOIN conversations c ON c.id = a.conversation_id
+    WHERE c.user_id = ? ORDER BY a.id DESC
+"""
 _CHUNKS = """
     SELECT a.source, c.page, c.chunk_index, c.text, c.embedding
     FROM attachment_chunks c JOIN attachments a ON a.id = c.attachment_id
@@ -113,14 +118,54 @@ def list_attachments(conversation_id: int) -> list[dict]:
         conn.close()
 
 
+def list_user_attachments(user_id: str) -> list[dict]:
+    """Every file the user joined to one of their conversations, newest first, with that conversation."""
+    conn = _connect()
+    try:
+        return [dict(row) for row in conn.execute(_LIST_FOR_USER, (user_id,))]
+    finally:
+        conn.close()
+
+
+def detach(user_id: str, attachment_id: int) -> bool:
+    """Delete a file joined to one of the user's conversations, with its chunks; False if it is not theirs."""
+    conn = _connect()
+    try:
+        with conn:
+            deleted = conn.execute(
+                "DELETE FROM attachments WHERE id = ? AND conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)",
+                (attachment_id, user_id)
+            ).rowcount
+        return deleted > 0
+    finally:
+        conn.close()
+
+
 def has_attachments(conversation_id: int | None) -> bool:
     return conversation_id is not None and bool(list_attachments(conversation_id))
 
 
+def _reembed(conn, root: int, model: str) -> None:
+    """Embed again, from their stored text, the files joined under another embedding model:
+    the original file is not kept, and they would otherwise drop out of the chat."""
+    stale = conn.execute("SELECT id FROM attachments WHERE conversation_id = ? AND embed_model != ?", (root, model)).fetchall()
+    for attachment in stale:
+        rows = conn.execute("SELECT id, text FROM attachment_chunks WHERE attachment_id = ?", (attachment["id"],)).fetchall()
+        vectors = embed_documents([row["text"] for row in rows])
+        if vectors is None:
+            return
+        with conn:
+            conn.executemany("UPDATE attachment_chunks SET embedding = ? WHERE id = ?",
+                             [(np.asarray(vector, dtype=EMBEDDING_DTYPE).tobytes(), row["id"]) for row, vector in zip(rows, vectors)])
+            conn.execute("UPDATE attachments SET embed_model = ? WHERE id = ?", (model, attachment["id"]))
+
+
 def _load_chunks(conversation_id: int) -> tuple[list[dict], np.ndarray]:
+    root, model = root_of(conversation_id), embed_model()
     conn = _connect()
     try:
-        rows = conn.execute(_CHUNKS, (root_of(conversation_id), embed_model())).fetchall()
+        _reembed(conn, root, model)
+        rows = conn.execute(_CHUNKS, (root, model)).fetchall()
     finally:
         conn.close()
     chunks = [{field: row[field] for field in ("source", "page", "chunk_index", "text")} for row in rows]

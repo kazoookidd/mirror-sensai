@@ -122,6 +122,7 @@ def generate_reply(session, context: list[dict], user_input: str):
 
     if result.pending is not None:
         # [A3] The agent is suspended: the action waits for /confirm or /cancel.
+        result.pending.conversation_id = session.conversation_id
         session.pending_action = result.pending
         session.out.confirmation(result.pending.title, result.pending.plan)
 

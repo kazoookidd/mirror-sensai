@@ -108,6 +108,15 @@ SETTINGS: tuple[Setting, ...] = (
         aliases=("semantic-cache",),
     ),
     Setting(
+        name="documents",
+        attribute="hr_documents",
+        summary="search the HR documents for each question (off = the model's own knowledge only)",
+        accepted="on or off",
+        parse=parse_switch,
+        describe=describe_switch,
+        aliases=("hr-documents", "rag"),
+    ),
+    Setting(
         name="seed",
         attribute="seed",
         summary="same seed + same question + same settings = same answer",

@@ -21,6 +21,7 @@ class PendingAction:
     title: str                    # short name of the action: "Leave request to confirm"
     plan: str                     # what will be done, as the user reads it
     execute: Callable[[], str]    # does the work; returns the result text for the user
+    conversation_id: int | None = None  # where it was prepared: the web shows its card in that chat only
 
     def render(self) -> str:
         """What the user sees while the agent is suspended."""

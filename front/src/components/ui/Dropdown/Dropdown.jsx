@@ -3,17 +3,21 @@ import { createPortal } from "react-dom";
 import { cx } from "../../../lib/cx.js";
 import styles from "./Dropdown.module.css";
 
+const OPTION_HEIGHT = 40;
+
 function moveFocus(menu, step) {
   const options = [...menu.querySelectorAll("[role=option]")];
   const index = options.indexOf(document.activeElement);
   options[(index + step + options.length) % options.length]?.focus();
 }
 
-function floatingPosition(anchor, align, placement) {
+function floatingPosition(anchor, align, placement, count) {
   const box = anchor.getBoundingClientRect();
+  const height = count * OPTION_HEIGHT;
+  const up = placement === "top" || (box.bottom + height > window.innerHeight && box.top > height);
   return {
     position: "fixed",
-    ...(placement === "top" ? { bottom: window.innerHeight - box.top + 4 } : { top: box.bottom + 4 }),
+    ...(up ? { top: "auto", bottom: window.innerHeight - box.top + 4 } : { top: box.bottom + 4 }),
     ...(align === "right" ? { right: window.innerWidth - box.right } : { left: box.left }),
   };
 }
@@ -61,7 +65,7 @@ export function Dropdown({ trigger, items, align = "left", placement = "bottom",
 
   const list = open && (
     <div ref={menu} className={cx(styles.menu, styles[align], styles[placement], compact && styles.compact)} role="listbox"
-      style={floating ? floatingPosition(anchor.current, align, placement) : undefined}>
+      style={floating ? floatingPosition(anchor.current, align, placement, items.length) : undefined}>
       {items.map((item, index) => {
         if (item === "separator")
           return <div key={index} className={styles.separator} role="separator" />;

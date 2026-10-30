@@ -12,7 +12,6 @@ import styles from "./LeaveRequestsPage.module.css";
 
 const ALL = "";
 
-// "2026-11-03" is a calendar day: read it in local time, not as UTC midnight.
 function day(value) {
   const [year, month, date] = value.split("-").map(Number);
   return new Date(year, month - 1, date);
@@ -20,7 +19,7 @@ function day(value) {
 
 export function period(request) {
   const start = formatDate(day(request.start_date));
-  return request.start_date === request.end_date ? start : `${start} → ${formatDate(day(request.end_date))}`;
+  return request.start_date === request.end_date ? start : `${start} to ${formatDate(day(request.end_date))}`;
 }
 
 function FilterSelect({ label, value, labels, onChange }) {
@@ -33,11 +32,10 @@ function FilterSelect({ label, value, labels, onChange }) {
   return <Select label={label} value={labels[value] ?? `All ${label.toLowerCase()}`} items={items} />;
 }
 
-// [M1] HR's decision: a menu for a request HR can decide on, a badge for one the employee cancelled.
-function StatusControl({ request, data, busy, onDecide }) {
+function StatusControl({ request, data, busy, onDecide, block }) {
   const decided = request.decided_by && request.status !== "pending";
   if (!data.decisions.includes(request.status))
-    return <StatusBadge status={request.status} />;
+    return <span className={styles.cancelled}><StatusBadge status={request.status} /></span>;
   const items = data.decisions.map((status) => ({
     label: data.statuses[status],
     selected: status === request.status,
@@ -48,7 +46,7 @@ function StatusControl({ request, data, busy, onDecide }) {
     <span className={styles.status}>
       <span className={styles[`decision_${request.status}`]}>
         {/* floating: the table clips its content (overflow: hidden), the list must be drawn over it */}
-        <Select floating label={`Status of request #${request.id}`} value={busy ? "Saving…" : request.status_label}
+        <Select floating block={block} label={`Status of request #${request.id}`} value={busy ? "Saving..." : request.status_label}
           items={items} />
       </span>
       {decided && <span className={styles.decidedBy}>by {request.decided_by}</span>}
@@ -65,7 +63,6 @@ function Employee({ request }) {
   );
 }
 
-// [M1] HR view: every employee's leave requests, and HR's decision on each.
 export function LeaveRequestsPage() {
   const [data, setData] = useState(null);
   const [failure, setFailure] = useState(null);
@@ -90,8 +87,8 @@ export function LeaveRequestsPage() {
     }
     setSaving(null);
   };
-  const control = (request) => (
-    <StatusControl request={request} data={data} busy={saving === request.id} onDecide={decide} />);
+  const control = (request, block) => (
+    <StatusControl request={request} data={data} busy={saving === request.id} onDecide={decide} block={block} />);
 
   const visible = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -133,20 +130,20 @@ export function LeaveRequestsPage() {
             <div className={`${styles.table} desktop-only`} role="table" aria-label="Leave requests">
               <div className={`${styles.row} ${styles.head}`} role="row">
                 <span role="columnheader">Employee</span>
-                <span role="columnheader">Type</span>
-                <span role="columnheader">Period</span>
-                <span role="columnheader">Reason</span>
+                <span role="columnheader">Request</span>
                 <span role="columnheader">Filed</span>
-                <span role="columnheader">Status</span>
+                <span role="columnheader">Decision</span>
               </div>
               {visible.map((request) => (
                 <div key={request.id} className={styles.row} role="row">
                   <span role="cell"><Employee request={request} /></span>
-                  <span role="cell" className={styles.cell}>{request.type_label}</span>
-                  <span role="cell" className={styles.cell}>{period(request)}</span>
-                  <span role="cell" className={`${styles.cell} truncate`} title={request.reason}>{request.reason || "—"}</span>
+                  <span role="cell" className={styles.request}>
+                    <span className={styles.type}>{request.type_label}</span>
+                    <span>{period(request)}</span>
+                    {request.reason && <span className={styles.reason}>{request.reason}</span>}
+                  </span>
                   <span role="cell" className={styles.cell}>{formatDate(parseUtc(request.created_at))}</span>
-                  <span role="cell">{control(request)}</span>
+                  <span role="cell">{control(request, true)}</span>
                 </div>
               ))}
             </div>

@@ -32,3 +32,16 @@
   border-color: var(--color-accent-default);
   background: var(--color-accent-subtle);
 }
+
+@media (max-width: 479px) {
+  .card {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-1);
+  }
+
+  .status {
+    order: 1;
+    flex-basis: 100%;
+    padding-left: 76px;
+  }
+}

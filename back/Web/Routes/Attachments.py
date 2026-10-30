@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from Memories.Conversations import create_conversation, delete_conversation
-from rag.Attachments import attach
+from rag.Attachments import attach, detach, list_user_attachments
 from Web.Routes.Conversations import owned
 from Web.Routes.Documents import read_upload, upload_name
 from Web.Sessions import WebSession, current
@@ -20,6 +20,18 @@ def _attach(conversation_id: int, name: str, content: bytes) -> dict:
         path = Path(folder) / name
         path.write_bytes(content)
         return attach(conversation_id, path, name)
+
+
+@router.get("/attachments")
+def my_files(web: WebSession = Depends(current)):
+    return {"attachments": list_user_attachments(web.session.user_id)}
+
+
+@router.delete("/attachments/{attachment_id}")
+def delete_file(attachment_id: int, web: WebSession = Depends(current)):
+    if not detach(web.session.user_id, attachment_id):
+        raise HTTPException(status_code=404, detail="File not found.")
+    return {"deleted": attachment_id}
 
 
 @router.post("/attachments")

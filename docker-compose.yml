@@ -42,7 +42,7 @@ services:
   # Downloads the chat model and the embedding model once, into the ollama_models volume.
   ollama-init:
     image: ollama/ollama:0.40.10
-    entrypoint: ["sh", "-c", "ollama pull \"$$MODEL\" && ollama pull nomic-embed-text"]
+    entrypoint: ["sh", "-c", "ollama pull \"$$MODEL\" && ollama pull bge-m3"]
     environment:
       - OLLAMA_HOST=ollama:11434
       - MODEL=${MODEL:-qwen2.5:3b}

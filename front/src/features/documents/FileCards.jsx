@@ -1,7 +1,7 @@
 import { StatusBadge } from "../../components/ui/Badge/Badge.jsx";
 import { Checkbox } from "../../components/ui/Checkbox/Checkbox.jsx";
 import { fileType, formatShortDate, formatSize } from "../../lib/format.js";
-import { QueryButton } from "./DocumentButtons.jsx";
+import { DocumentMenu, QueryButton } from "./DocumentButtons.jsx";
 import { FileName } from "./FileName.jsx";
 import styles from "./FileCards.module.css";
 
@@ -9,7 +9,7 @@ function plural(count) {
   return count > 1 ? "s" : "";
 }
 
-export function FileCards({ items, selection, onToggle }) {
+export function FileCards({ items, selection, onToggle, actions }) {
   return (
     <div className={`${styles.list} mobile-only`}>
       {selection.size > 0 && (
@@ -25,8 +25,10 @@ export function FileCards({ items, selection, onToggle }) {
           return (
             <li key={item.source} className={styles.card} data-selected={selected}>
               <Checkbox checked={selected} onChange={() => onToggle(item.source)} aria-label={`Select ${item.source}`} />
-              <FileName source={item.source} meta={meta} iconSize={18} />
-              <StatusBadge status={item.status} />
+              <FileName source={item.source} meta={meta} iconSize={18}
+                editing={actions.renaming === `cards:${item.source}`} onRenamed={(name) => actions.rename(item, name)} />
+              <span className={styles.status}><StatusBadge status={item.status} /></span>
+              <DocumentMenu item={item} view="cards" actions={actions} />
             </li>
           );
         })}

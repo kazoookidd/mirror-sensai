@@ -1,16 +1,21 @@
 import { Link, NavLink } from "react-router-dom";
+import { RoleBadge } from "../components/ui/Badge/Badge.jsx";
 import { Brand } from "../components/ui/Brand/Brand.jsx";
 import { Icon } from "../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../components/ui/IconButton/IconButton.jsx";
 import { ModelSelect } from "../features/ollama/ModelSelect/ModelSelect.jsx";
 import { useApp } from "../context/AppContext.jsx";
-import { sectionsFor } from "./sections.js";
+import { isHr, sectionsFor } from "./sections.js";
 import styles from "./MobileBars.module.css";
 
 export function RootAppBar() {
+  const { user } = useApp();
   return (
     <header className={styles.appBar}>
-      <Link to="/chat" aria-label="SENSAI, home"><Brand /></Link>
+      <div className={styles.left}>
+        <Link to="/chat" aria-label="SENSAI, home"><Brand /></Link>
+        {isHr(user) && <RoleBadge />}
+      </div>
       <div className={styles.right}>
         <ModelSelect variant="chip" align="right" />
         <IconButton icon="settings" label="Settings" to="/settings" />

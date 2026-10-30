@@ -14,6 +14,7 @@ load_env()
 from Memories.Database import init_db
 from Memories.Auth import ROLE_EMPLOYEE, email_of, get_or_create_user, role_of
 from Memories.Memory import save_message, load_history
+from Memories.Conversations import record_model
 from Memories.Profile import context_text, get_profile
 from Memories.Compression import build_context, estimate_tokens
 from Memories.TokenLimit import (
@@ -222,7 +223,7 @@ def login_flow() -> str:
         return user["user_id"]
 
 
-def add_documents(context: list[dict], user_input: str, ollama_url: str, conversation_id: int | None = None) -> None:
+def add_documents(context: list[dict], user_input: str, ollama_url: str, conversation_id: int | None = None, search_base: bool = True) -> None:
     """Add the files joined to the conversation, then the HR documents relevant to `user_input`, within the token limit.
     They go INTO the system message, as described sections after the persona and the profile (the tool
     guidance comes last). A second system message right before the question was read by small models as
@@ -235,7 +236,7 @@ def add_documents(context: list[dict], user_input: str, ollama_url: str, convers
         room -= estimate_tokens(attached["content"])
     # A leave request is an action: excerpts about leave rules made small models explain the rules
     # instead of preparing the request (docs/benchmarks/chat_models.md). The joined files are kept.
-    documents = None if asks_for_leave(user_input) else rag_message(user_input, room, ollama_url=ollama_url)
+    documents = None if not search_base or asks_for_leave(user_input) else rag_message(user_input, room, ollama_url=ollama_url)
     if documents:
         _add_to_system(context, documents["content"])
 
@@ -273,7 +274,9 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # [M1] The profile is read again at every turn: /profile or the web page may have
     # changed it. It is part of the system prompt, so also of the cache fingerprint.
     refresh_profile(session)
-    cache_turn = CacheTurn() if has_attachments(session.conversation_id) else check_cache(session, user_input)
+    # Without the HR documents, a cached answer written from them would not be the answer asked for.
+    skip_cache = has_attachments(session.conversation_id) or not session.hr_documents
+    cache_turn = CacheTurn() if skip_cache else check_cache(session, user_input)
     if cache_turn.hit is not None:
         session.out.answer(cache_turn.hit.answer)
         session.out.note(hit_note(cache_turn.hit))
@@ -288,7 +291,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
         session.model,
         session.ollama_url,
     )
-    add_documents(context, user_input, session.ollama_url, session.conversation_id)
+    add_documents(context, user_input, session.ollama_url, session.conversation_id, session.hr_documents)
     context.append({"role": "user", "content": user_input})
 
     # Token limit: compression had its chance, this is what is left.
@@ -315,6 +318,7 @@ def chat_turn(session: Session, user_input: str) -> bool:
 
     save_message(session.conversation_id, "user", user_input)
     save_message(session.conversation_id, "assistant", reply.text)
+    record_model(session.conversation_id, session.model)
     if stopped:
         return True
     remember_answer(session, cache_turn, user_input, reply.text,

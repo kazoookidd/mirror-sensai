@@ -32,11 +32,13 @@ Critères d'acceptation :
 * Relancer `/ingest` ne recalcule que les fichiers ajoutés ou modifiés ; un fichier supprimé du dossier est retiré de l'index
 * Un PDF protégé, scanné ou abîmé, ou un fichier illisible, produit un avertissement sans arrêter l'indexation des autres
 * Un dossier inexistant affiche une erreur claire au lieu d'un faux succès
+* Réservé aux comptes RH : un compte employé reçoit un message d'erreur et rien n'est indexé
 
 **US-RAG-04** En tant qu'utilisateur, je veux que la recherche dans les documents ne bloque jamais la conversation, afin de toujours obtenir une réponse même quand le RAG ne peut pas aider.
 
 Critères d'acceptation :
 
+* L'interrupteur « HR documents » du champ de saisie (ou `/settings documents off`) répond sans les documents RH, et sans le cache sémantique ; rallumé, la recherche reprend
 * Les extraits ajoutés tiennent toujours dans la place restante sous `CONTEXT_TOKEN_BUDGET` : le RAG ne déclenche jamais le blocage de la limite de tokens (il ajoute moins d'extraits, ou aucun)
 * Si Ollama ne répond pas pour les embeddings, ou si rien n'est indexé, l'assistant répond sans extraits
 * Si l'index a été construit avec un autre modèle d'embedding, un avertissement invite à relancer `/ingest` et l'assistant répond sans extraits
@@ -45,11 +47,13 @@ Critères d'acceptation :
 
 Critères d'acceptation :
 
-* Dans Documents, « Import a document » ou un dépôt sur la zone en pointillés envoie un ou plusieurs fichiers `.txt`, `.md` ou `.pdf` (10 Mo au plus)
+* Dans Knowledge base (groupe HR de la barre latérale), « Import a document » ou un dépôt sur la zone en pointillés envoie un ou plusieurs fichiers `.txt`, `.md` ou `.pdf` (10 Mo au plus)
 * Le fichier est enregistré dans `data/docs` puis indexé comme avec `/ingest` (découpage et embeddings sur la machine) ; il apparaît « Indexed » avec son nombre de morceaux
 * Une question posée ensuite dans le chat peut s'appuyer sur ce document ; le cache sémantique est vidé, car ses réponses venaient des anciens documents
 * Un nom qui sortirait du dossier, un format non pris en charge, un fichier vide, trop gros ou sans texte lisible (PDF scanné) est refusé avec un message clair, et rien n'est enregistré
 * Si Ollama ne répond pas, le fichier est gardé « Not indexed » et le message l'indique
+* Le menu « ⋯ » d'un document le renomme (sans recalculer ses embeddings, les réponses citent le nouveau nom) ou le supprime après confirmation (fichier et morceaux retirés, même si Ollama ne répond pas) ; le cache sémantique est vidé
+* Un compte employé n'a pas Knowledge base dans sa barre latérale (l'adresse le renvoie vers My files) ; un import envoyé à la main est refusé par le serveur (403)
 
 **US-RAG-06** En tant que salarié, je veux joindre mon contrat ou un courrier à une discussion, afin de poser des questions dessus sans le rendre visible aux autres ni l'ajouter à la base de l'entreprise.
 
@@ -58,5 +62,16 @@ Critères d'acceptation :
 * Le trombone du champ de saisie joint un ou plusieurs fichiers `.txt`, `.md` ou `.pdf` (10 Mo au plus) ; ils s'affichent sous forme d'étiquettes au-dessus du champ et restent après un rechargement
 * Joint avant le premier message, le fichier ouvre une nouvelle discussion à son nom
 * Les réponses de cette discussion s'appuient sur le fichier (« Quel est mon préavis ? », « Résume le fichier joint ») ; une autre discussion, ou un autre compte, n'y a pas accès
-* Le fichier n'apparaît pas dans Documents et n'entre pas dans la base commune ; supprimer la discussion le supprime ; une branche (X2) garde les fichiers de sa discussion
+* Le fichier n'entre pas dans la base commune ; supprimer la discussion le supprime ; une branche (X2) garde les fichiers de sa discussion
 * Un fichier illisible (PDF scanné), un format non pris en charge ou Ollama indisponible affiche un message clair, et rien n'est gardé
+* La page My files liste tous mes fichiers joints avec leur discussion (un clic l'ouvre), puis les documents RH en lecture seule
+* Depuis My files, je supprime un fichier joint après confirmation : sa discussion ne s'en sert plus ; un autre compte ne peut pas le supprimer (404)
+* Après un changement de modèle d'embedding, les fichiers déjà joints sont ré-encodés depuis leur texte à la question suivante : ils restent utilisables
+
+## Captures d'écran
+
+| Réponse tirée d'un document RH, avec sa source | Fichier joint à une discussion |
+| --- | --- |
+| ![Réponse qui cite loi_conge_deces.md](../images/r1-chat-answer-with-source.png) | ![Question sur un contrat joint](../images/r1-joined-file.png) |
+| **Salarié : My files** | **RH : Knowledge base** |
+| ![Page My files](../images/r1-my-files.png) | ![Page Knowledge base](../images/r1-knowledge-base-hr.png) |

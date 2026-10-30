@@ -1,6 +1,7 @@
 import { Button } from "../../components/ui/Button/Button.jsx";
 import { useApp } from "../../context/AppContext.jsx";
 import { AppShell } from "../../layout/AppShell.jsx";
+import { isHr } from "../../layout/sections.js";
 import { Page, PageHeader } from "../../layout/Page.jsx";
 import { SettingsSections } from "./SettingsSections.jsx";
 import { Section } from "./Section.jsx";
@@ -17,7 +18,7 @@ export function SettingsPage() {
         </div>
         <SettingsSections />
         <div className={styles.account}>
-          <Section title="Account" description={`Logged in as ${user.user_id}.`}>
+          <Section title="Account" description={`Logged in as ${user.user_id}, ${isHr(user) ? "HR" : "employee"} account.`}>
             <div className={styles.accountActions}>
               <Button to="/profile" block>Profile</Button>
               <Button variant="danger" block onClick={logout}>Log out</Button>

@@ -52,7 +52,7 @@ else
 fi
 
 # --- Pull the RAG embedding model ---
-EMBED_MODEL="nomic-embed-text"
+EMBED_MODEL="bge-m3"
 if ! command -v ollama &> /dev/null; then
     echo "Ollama not found: install it, then run 'ollama pull $EMBED_MODEL'."
 elif ollama pull "$EMBED_MODEL"; then

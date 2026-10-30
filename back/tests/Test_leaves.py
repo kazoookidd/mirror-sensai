@@ -131,7 +131,8 @@ class TestToolSpec(unittest.TestCase):
     def test_leave_types_are_a_closed_list_with_a_meaning_each(self):
         import json
         from Agents.Setup import DEFAULT_TOOLS_PATH
-        tools = {t["function"]["name"]: t["function"] for t in json.load(open(DEFAULT_TOOLS_PATH, encoding="utf-8"))}
+        with open(DEFAULT_TOOLS_PATH, encoding="utf-8") as file:
+            tools = {t["function"]["name"]: t["function"] for t in json.load(file)}
         leave_type = tools["file_leave_request"]["parameters"]["properties"]["leave_type"]
         self.assertEqual(leave_type["enum"], list(LEAVE_TYPES))
         for code in LEAVE_TYPES:

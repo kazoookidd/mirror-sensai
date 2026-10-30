@@ -26,6 +26,38 @@ export function DocumentsPage() {
     documentsApi.list().then((next) => { setData(next); setFailed(false); }).catch(() => setFailed(true));
   }, []);
   const upload = useImport(refresh);
+  const [renaming, setRenaming] = useState(null);
+  const [actionError, setActionError] = useState(null);
+
+  const forget = (source) => setSelection((current) => {
+    const next = new Set(current);
+    next.delete(source);
+    return next;
+  });
+  const run = async (source, work) => {
+    setActionError(null);
+    try {
+      await work();
+      forget(source);
+    } catch (error) {
+      setActionError({ source, message: error.message });
+    }
+    refresh();
+  };
+  const actions = {
+    renaming,
+    startRename: (item, view) => setRenaming(`${view}:${item.source}`),
+    rename: (item, name) => {
+      setRenaming(null);
+      if (name)
+        run(item.source, () => documentsApi.rename(item.source, name));
+    },
+    remove: (item) => {
+      if (!window.confirm(`Delete "${item.source}" from the knowledge base? SENSAI will no longer answer from it.`))
+        return;
+      run(item.source, () => documentsApi.remove(item.source));
+    },
+  };
   const zone = { importing: upload.importing, onPick: upload.open, onDrop: upload.importFiles };
 
   useEffect(refresh, [refresh]);
@@ -53,6 +85,7 @@ export function DocumentsPage() {
         <ImportButton className="mobile-only" importing={upload.importing} onClick={upload.open} />
         <input {...upload.inputProps} aria-label="Choose documents to import" />
         <ImportResults results={upload.results} />
+        {actionError && <ErrorBanner title={`${actionError.source} was not changed`}>{actionError.message}</ErrorBanner>}
         {failed && <p className="info-note"><Icon name="alert" size={16} />Could not read the knowledge base.</p>}
         {data && !items.length && <EmptyBase {...zone} />}
         {items.length > 0 && <>
@@ -64,8 +97,8 @@ export function DocumentsPage() {
             </div>
             <p className={styles.info}><Icon name="database" size={14} />Chunking and embeddings run locally with {data.embed_model}</p>
           </div>
-          <FileTable items={items} selection={selection} onToggle={toggle} onToggleAll={toggleAll} />
-          <FileCards items={items} selection={selection} onToggle={toggle} />
+          <FileTable items={items} selection={selection} onToggle={toggle} onToggleAll={toggleAll} actions={actions} />
+          <FileCards items={items} selection={selection} onToggle={toggle} actions={actions} />
         </>}
       </Page>
     </AppShell>

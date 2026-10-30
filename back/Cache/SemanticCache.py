@@ -49,7 +49,7 @@ def _env_number(name: str, default: float, low: float, high: float) -> float:
 
 
 ENABLED = _env_bool("CACHE_ENABLED", True)
-EMBED_MODEL = os.getenv("CACHE_EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text"
+EMBED_MODEL = os.getenv("CACHE_EMBED_MODEL", "bge-m3").strip() or "bge-m3"
 SIMILARITY = _env_number("CACHE_SIMILARITY", 0.92, 0.5, 1.0)
 TTL_HOURS = _env_number("CACHE_TTL_HOURS", 168, 0, 24 * 365)  # 0 = never expires
 MAX_ENTRIES = int(_env_number("CACHE_MAX_ENTRIES", 500, 10, 100000))
