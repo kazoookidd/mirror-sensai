@@ -43,7 +43,8 @@ _TIME_SENSITIVE = re.compile(
 _REFUSAL = re.compile(
     r"(je n'ai pas (la capacité|accès|d'informations récentes)|je ne peux pas (faire|effectuer|accéder)|"
     r"en tant qu'assistant textuel|i (cannot|can't|am unable to|do not have the ability)|"
-    r"as a text-based|i don't have access)", re.IGNORECASE)
+    r"as a text-based|i don't have access|"
+    r"refused:|does not give that information|tries to drop the assistant's rules)", re.IGNORECASE)
 
 
 def question_is_self_contained(text: str) -> bool:
