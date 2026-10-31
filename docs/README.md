@@ -12,6 +12,7 @@ This folder holds what the README does not:
 | [user_stories/](user_stories/) | The user stories and acceptance criteria of each feature |
 | [benchmarks/chat_models.md](benchmarks/chat_models.md) | Chat models compared on Sensai's own scenarios, on this machine |
 | [benchmarks/embedding_models.md](benchmarks/embedding_models.md) | Embedding models compared for the RAG and the semantic cache |
+| [benchmarks/rag_reranking.md](benchmarks/rag_reranking.md) | Reranking of the RAG excerpts compared (R2) |
 | [images/](images/) | Screenshots of the web interface, shown in the README and the user stories |
 
 ## Features and their user stories
@@ -22,6 +23,7 @@ This folder holds what the README does not:
 | M1 | Accounts, persistent history, several conversations, user profile | [B1_M1_M2_memory.md](user_stories/B1_M1_M2_memory.md) |
 | M2 | Context compression, token limit and usage | [B1_M1_M2_memory.md](user_stories/B1_M1_M2_memory.md), [M2_token_limit.md](user_stories/M2_token_limit.md) |
 | R1 | RAG over the HR documents, files joined to a chat | [R1_rag.md](user_stories/R1_rag.md) |
+| R2 | Advanced RAG: reranking, score per excerpt, filter by document | [R2_rag_advanced.md](user_stories/R2_rag_advanced.md) |
 | A1 | ReAct agent and its reasoning trace | [A1_react.md](user_stories/A1_react.md) |
 | T3 | Web search, with personal details removed | [T3_web_search.md](user_stories/T3_web_search.md) |
 | EV2 | Content & privacy guardrails on the chat | [EV2_guardrails.md](user_stories/EV2_guardrails.md) |
