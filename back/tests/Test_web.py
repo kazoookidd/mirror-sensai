@@ -177,6 +177,16 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(stream[-1], ("done", {"ok": False}))
         self.assertEqual(load_history(stream[0][1]["id"]), [])
 
+    def test_an_out_of_scope_question_is_refused_before_the_model(self):
+        client = self.login()
+        before = len(FakeOllama.received)
+        stream = events(self.chat(client, "Quel est le salaire de Marc ?"))
+        errors = [data for name, data in stream if name == "error"]
+        self.assertEqual([error["kind"] for error in errors], ["guardrail"])
+        self.assertEqual(stream[-1], ("done", {"ok": False}))
+        self.assertEqual(len(FakeOllama.received), before)
+        self.assertEqual(load_history(stream[0][1]["id"]), [])
+
     def test_empty_message_and_other_users_conversation_are_refused(self):
         client = self.login()
         self.assertEqual(self.chat(client, "   ").status_code, 422)
