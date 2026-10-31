@@ -76,3 +76,20 @@ def redact(text: str, known: tuple[str, ...] = ()) -> tuple[str, list[str]]:
             text = pattern.sub(" ", text)
 
     return " ".join(text.split()), list(dict.fromkeys(found))
+
+
+def mask(text: str) -> tuple[str, list[str]]:
+    """`text` with each personal detail replaced by `[kind]`, and the kinds found
+    (never their values). Same patterns as redact: a placeholder keeps the meaning
+    for the model, a blank would just look like a hole."""
+    found: list[str] = []
+
+    for kind, pattern, valid in PATTERNS:
+        def drop(match, kind=kind, valid=valid):
+            if valid is not None and not valid(match.group()):
+                return match.group()
+            found.append(kind)
+            return f" [{kind}] "
+        text = pattern.sub(drop, text)
+
+    return " ".join(text.split()), list(dict.fromkeys(found))
