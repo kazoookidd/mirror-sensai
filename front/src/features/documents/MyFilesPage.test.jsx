@@ -8,6 +8,8 @@ import { MyFilesPage } from "./MyFilesPage.jsx";
 vi.mock("../../api/attachments.js", () => ({ attachments: { mine: vi.fn(), remove: vi.fn() } }));
 vi.mock("../../api/documents.js", () => ({ documents: { list: vi.fn() } }));
 vi.mock("../../layout/AppShell.jsx", () => ({ AppShell: ({ children }) => <div>{children}</div> }));
+const chooseScope = vi.fn().mockResolvedValue();
+vi.mock("../../context/AppContext.jsx", () => ({ useApp: () => ({ chooseScope }) }));
 
 const FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true };
 const BASE = { embed_model: "bge-m3", documents: [{ source: "loi_teletravail.md", status: "indexed", size: 2048, modified: 1798538400 }] };
@@ -58,6 +60,16 @@ describe("MyFilesPage [R1]", () => {
     expect(screen.getByText("courrier.md")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     confirm.mockRestore();
+  });
+
+  it("lets an employee ask about some HR documents only", async () => {
+    attachments.mine.mockResolvedValue({ attachments: [] });
+    renderPage();
+    const box = await screen.findByRole("checkbox", { name: "Select loi_teletravail.md" });
+    expect(screen.queryByRole("button", { name: /Ask about the selection/ })).toBeNull();
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: /Ask about the selection/ }));
+    await waitFor(() => expect(chooseScope).toHaveBeenCalledWith({ sources: ["loi_teletravail.md"] }));
   });
 
   it("explains how to join a file when there is none yet", async () => {

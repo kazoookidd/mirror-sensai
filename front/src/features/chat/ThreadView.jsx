@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
+import { useApp } from "../../context/AppContext.jsx";
 import { AssistantMessage } from "./Messages/AssistantMessage.jsx";
 import { CommandResult } from "./Messages/CommandResult.jsx";
 import { UserMessage } from "./Messages/UserMessage.jsx";
@@ -22,6 +23,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, toolba
     stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < STICK_DISTANCE;
   };
 
+  const { showSources } = useApp();
   return (
     <div className={styles.chat}>
       {toolbar && <div className={styles.toolbar}>{toolbar}</div>}
@@ -34,7 +36,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, toolba
             }
             if (message.role === "failure") return <FailureBanner key={message.id} kind={message.kind} onRetry={() => onRetry(message)} />;
             if (message.role === "command") return <CommandResult key={message.id} {...message} />;
-            return <AssistantMessage key={message.id} model={message.model} text={message.text} steps={message.steps} busy={busy || offline}
+            return <AssistantMessage key={message.id} model={message.model} text={message.text} steps={message.steps} sources={message.sources} showSources={showSources} busy={busy || offline}
               streaming={message.streaming} stopped={message.stopped} confirmation={message.confirmation} onCommand={onCommand}
               onRegenerate={message.saved ? () => onRegenerate(message) : undefined} />;
           })}

@@ -5,6 +5,9 @@
 }
 
 .selectionBar {
+  position: sticky;
+  top: var(--spacing-2);
+  z-index: 1;
   display: flex;
   gap: var(--spacing-2);
   align-items: center;

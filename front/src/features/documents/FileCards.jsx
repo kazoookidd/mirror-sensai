@@ -9,13 +9,13 @@ function plural(count) {
   return count > 1 ? "s" : "";
 }
 
-export function FileCards({ items, selection, onToggle, actions }) {
+export function FileCards({ items, selection, onToggle, actions, onAsk }) {
   return (
     <div className={`${styles.list} mobile-only`}>
       {selection.size > 0 && (
         <div className={styles.selectionBar}>
           {selection.size} document{plural(selection.size)} selected
-          <QueryButton label="Ask" />
+          <QueryButton label="Ask" onClick={onAsk} />
         </div>
       )}
       <ul className={styles.list}>

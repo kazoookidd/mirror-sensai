@@ -2,9 +2,6 @@ import { Button } from "../../components/ui/Button/Button.jsx";
 import { Dropdown } from "../../components/ui/Dropdown/Dropdown.jsx";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../../components/ui/IconButton/IconButton.jsx";
-import { TestTag } from "../../components/feedback/TestTag/TestTag.jsx";
-
-const TEST_HINT = "[TEST] Not available yet";
 
 export function ImportButton({ importing, onClick, className }) {
   return (
@@ -14,8 +11,8 @@ export function ImportButton({ importing, onClick, className }) {
   );
 }
 
-export function QueryButton({ label }) {
-  return <Button icon="message" disabled title={TEST_HINT}>{label} <TestTag /></Button>;
+export function QueryButton({ label, onClick }) {
+  return <Button icon="message" onClick={onClick} title="Ask SENSAI in a new chat, searching only these documents">{label}</Button>;
 }
 
 export function DocumentMenu({ item, view, actions }) {

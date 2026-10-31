@@ -193,8 +193,23 @@ describe("useChat", () => {
     await act(() => result.current.runCommand("/leaves"));
     expect(result.current.messages[1].confirmation).toEqual(card);
     commands.run.mockResolvedValue({ output: "Dropped", model: "m", pending: null });
+    conversations.messages.mockResolvedValue({ conversation: { id: 5, title: "Leave" }, versions: [], pending: null,
+      messages: [{ role: "user", content: "I take Monday off" }, { role: "assistant", content: "=== plan ===\nCancelled: nothing was done." }] });
     await act(() => result.current.runCommand("/cancel"));
     expect(result.current.messages[1].confirmation).toBeNull();
+    expect(result.current.messages[1].text).toBe("=== plan ===\nCancelled: nothing was done.");
+  });
+
+  it("keeps the sources of an answer, streamed or reloaded", async () => {
+    const sources = [{ source: "a.md", page: null, score: 0.7, semantic: 0.7, keyword: 0.6, excerpt: "x" }];
+    streams(["conversation", { id: 6, title: "Q" }], ["token", { text: "Oui." }], ["sources", { sources }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("Q ?"));
+    expect(result.current.messages[1].sources).toEqual(sources);
+    conversations.messages.mockResolvedValue({ conversation: { id: 6, title: "Q" }, versions: [], pending: null,
+      messages: [{ role: "user", content: "Q ?" }, { role: "assistant", content: "Oui.", sources }] });
+    await act(() => result.current.load(6));
+    expect(result.current.messages[1].sources).toEqual(sources);
   });
 
   it("puts the waiting action back on the last answer when the conversation is reloaded", async () => {

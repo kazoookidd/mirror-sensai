@@ -8,6 +8,7 @@ import { ImportButton, QueryButton } from "./DocumentButtons.jsx";
 import { DropZone, EmptyBase } from "./DropZone.jsx";
 import { FileCards } from "./FileCards.jsx";
 import { FileTable } from "./FileTable.jsx";
+import { useAskSelection } from "./useAskSelection.js";
 import { useImport } from "./useImport.js";
 import styles from "./DocumentsPage.module.css";
 
@@ -21,6 +22,9 @@ export function DocumentsPage() {
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
   const [selection, setSelection] = useState(() => new Set());
+  const askSelection = useAskSelection();
+  const [askError, setAskError] = useState(null);
+  const ask = () => askSelection(selection).catch((error) => setAskError(error.message));
 
   const refresh = useCallback(() => {
     documentsApi.list().then((next) => { setData(next); setFailed(false); }).catch(() => setFailed(true));
@@ -79,12 +83,13 @@ export function DocumentsPage() {
           subtitle="Import HR documents to enrich the answers of SENSAI."
           mobileSubtitle="Import HR documents to enrich the answers."
           actions={<>
-            {selection.size > 0 && <span className="desktop-only"><QueryButton label={`Ask about the selection · ${selection.size}`} /></span>}
+            {selection.size > 0 && <span className="desktop-only"><QueryButton label={`Ask about the selection · ${selection.size}`} onClick={ask} /></span>}
             <ImportButton className="desktop-only" importing={upload.importing} onClick={upload.open} />
           </>} />
         <ImportButton className="mobile-only" importing={upload.importing} onClick={upload.open} />
         <input {...upload.inputProps} aria-label="Choose documents to import" />
         <ImportResults results={upload.results} />
+        {askError && <ErrorBanner title="The selection could not be searched">{askError}</ErrorBanner>}
         {actionError && <ErrorBanner title={`${actionError.source} was not changed`}>{actionError.message}</ErrorBanner>}
         {failed && <p className="info-note"><Icon name="alert" size={16} />Could not read the knowledge base.</p>}
         {data && !items.length && <EmptyBase {...zone} />}
@@ -98,7 +103,7 @@ export function DocumentsPage() {
             <p className={styles.info}><Icon name="database" size={14} />Chunking and embeddings run locally with {data.embed_model}</p>
           </div>
           <FileTable items={items} selection={selection} onToggle={toggle} onToggleAll={toggleAll} actions={actions} />
-          <FileCards items={items} selection={selection} onToggle={toggle} actions={actions} />
+          <FileCards items={items} selection={selection} onToggle={toggle} actions={actions} onAsk={ask} />
         </>}
       </Page>
     </AppShell>

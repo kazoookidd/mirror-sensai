@@ -67,6 +67,8 @@ export function useChat({ onConversation }) {
         } else if (name === "retract") {
           // [A1] The agent calls the model again: what streamed so far is not the answer.
           updateAnswer(answerId, () => ({ text: "" }));
+        } else if (name === "sources") {
+          updateAnswer(answerId, () => ({ sources: data.sources }));
         } else if (name === "confirmation") {
           showConfirmation(answerId, { title: data.title, plan: data.plan });
         } else if (name === "answer") {
@@ -134,16 +136,21 @@ export function useChat({ onConversation }) {
     if (localOutput !== undefined) return;
     setBusy(true);
     try {
+      const settling = messages.find((message) => message.confirmation);
       const result = await commands.run(text, conversation?.id ?? null);
       updateAnswer(id, () => ({ output: result.output, pending: false }));
       if (!result.pending) showConfirmation(null, null);
+      if (!result.pending && settling?.saved && conversation) {
+        const saved = (await conversations.messages(conversation.id)).messages[settling.position];
+        if (saved) updateAnswer(settling.id, () => ({ text: saved.content }));
+      }
       setModel(result.model);
       refreshPersonas();
     } catch (failure) {
       updateAnswer(id, () => ({ error: failure.message, pending: false }));
     }
     setBusy(false);
-  }, [conversation, setModel, refreshPersonas]);
+  }, [conversation, messages, setModel, refreshPersonas]);
 
   const attach = useCallback(async (files) => {
     for (const file of files) {
@@ -176,7 +183,7 @@ export function useChat({ onConversation }) {
     current.current = loaded;
     setConversation(loaded);
     const loadedMessages = data.messages.map((message, position) => (
-      { id: newId(), role: message.role, text: message.content, saved: true, position }));
+      { id: newId(), role: message.role, text: message.content, sources: message.sources, saved: true, position }));
     const last = loadedMessages.at(-1);
     if (data.pending && last?.role === "assistant") last.confirmation = data.pending;
     setMessages(loadedMessages);

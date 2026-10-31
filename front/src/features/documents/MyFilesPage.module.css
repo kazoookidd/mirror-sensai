@@ -35,6 +35,30 @@
   background: var(--color-bg-surface);
 }
 
+.card[data-selected="true"] {
+  border-color: var(--color-accent-default);
+  background: var(--color-accent-subtle);
+}
+
+.selectionBar {
+  position: sticky;
+  top: var(--spacing-2);
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--spacing-2);
+  padding: 6px 6px 6px var(--spacing-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-default);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
 .chat {
   display: flex;
   flex-shrink: 1;

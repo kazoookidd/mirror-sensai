@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button/Button.jsx";
+import { Checkbox } from "../../components/ui/Checkbox/Checkbox.jsx";
 import { Icon } from "../../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../../components/ui/IconButton/IconButton.jsx";
 import { AppShell } from "../../layout/AppShell.jsx";
@@ -8,7 +9,9 @@ import { Page, PageHeader } from "../../layout/Page.jsx";
 import { attachments as attachmentsApi } from "../../api/attachments.js";
 import { documents as documentsApi } from "../../api/documents.js";
 import { fileType, formatShortDate, formatSize, parseUtc } from "../../lib/format.js";
+import { QueryButton } from "./DocumentButtons.jsx";
 import { FileName } from "./FileName.jsx";
+import { useAskSelection } from "./useAskSelection.js";
 import styles from "./MyFilesPage.module.css";
 
 function Section({ title, count, description, children }) {
@@ -50,15 +53,35 @@ function JoinedFiles({ items, onDelete }) {
 }
 
 function SharedDocuments({ items }) {
+  const [selection, setSelection] = useState(() => new Set());
+  const [askError, setAskError] = useState(null);
+  const askSelection = useAskSelection();
   if (!items.length) return <p className={styles.description}>HR has not added any document yet.</p>;
+  const toggle = (source) => setSelection((current) => {
+    const next = new Set(current);
+    if (next.has(source))
+      next.delete(source);
+    else next.add(source);
+    return next;
+  });
   return (
-    <ul className={styles.list}>
-      {items.map((item) => (
-        <li key={item.source} className={styles.card}>
-          <FileName source={item.source} meta={`${fileType(item.source)} · ${formatSize(item.size)}`} iconSize={16} />
-        </li>
-      ))}
-    </ul>
+    <>
+      {selection.size > 0 && (
+        <div className={styles.selectionBar}>
+          <span>{selection.size} document{selection.size > 1 ? "s" : ""} selected</span>
+          <QueryButton label="Ask about the selection" onClick={() => askSelection(selection).catch((error) => setAskError(error.message))} />
+        </div>
+      )}
+      {askError && <p className="info-note" role="alert"><Icon name="alert" size={16} />{askError}</p>}
+      <ul className={styles.list}>
+        {items.map((item) => (
+          <li key={item.source} className={styles.card} data-selected={selection.has(item.source)}>
+            <Checkbox checked={selection.has(item.source)} onChange={() => toggle(item.source)} aria-label={`Select ${item.source}`} />
+            <FileName source={item.source} meta={`${fileType(item.source)} · ${formatSize(item.size)}`} iconSize={16} />
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -98,7 +121,7 @@ export function MyFilesPage() {
         )}
         {shared && (
           <Section title="HR documents" count={shared.length}
-            description="Shared with every employee and kept up to date by HR. SENSAI searches them for every answer.">
+            description="Shared with every employee and kept up to date by HR. SENSAI searches them for every answer; tick some to ask about them only.">
             <SharedDocuments items={shared} />
           </Section>
         )}
