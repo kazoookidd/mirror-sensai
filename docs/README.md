@@ -24,6 +24,7 @@ This folder holds what the README does not:
 | R1 | RAG over the HR documents, files joined to a chat | [R1_rag.md](user_stories/R1_rag.md) |
 | A1 | ReAct agent and its reasoning trace | [A1_react.md](user_stories/A1_react.md) |
 | T3 | Web search, with personal details removed | [T3_web_search.md](user_stories/T3_web_search.md) |
+| EV2 | Content & privacy guardrails on the chat | [EV2_guardrails.md](user_stories/EV2_guardrails.md) |
 | A3 | Human in the loop: leave requests confirmed by the user | [A3_human_in_the_loop.md](user_stories/A3_human_in_the_loop.md) |
 | A5 | Personas, model switching at runtime | [A5_personas.md](user_stories/A5_personas.md) |
 | A6 | Semantic cache | [A6_cache.md](user_stories/A6_cache.md) |

@@ -24,6 +24,9 @@ is an HR assistant, centred on employee onboarding.
   terminal, a "Reasoning" panel under the answer in the web interface
 - **Private by design**: the model, the chats and the documents stay on the machine; the only thing that
   leaves it is a web search, and personal details are removed from it first ([T3], see below)
+- **Content & privacy guardrails** ([EV2]): a question about another employee's salary or a jailbreak is
+  refused before the model; personal details (e-mail, phone, social security number, IBAN, card) are
+  stripped from what is sent and from what is saved
 - **Semantic cache** ([A6]): a question that means the same as an earlier one is answered instantly, with
   no model call
 - **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
@@ -314,6 +317,26 @@ Leave request #7 saved for alice. See all yours with /leaves.
   an action to confirm is treated as an error (it fails closed).
 - Never cached by the semantic cache (tools were used).
 
+### Content & privacy guardrails ([EV2])
+
+The system prompt already asks the model not to talk about another employee. The code does not rely on
+that. Every chat turn, in the terminal and in the web UI, goes through interceptors in
+`back/Agents/Guardrails.py` before the cache and the model, and again after the answer:
+
+- **Input, blocked**: a question about another employee's salary, NIR or absences (« Quel est le salaire
+  de Marc ? », « les absences de mon collègue »), or a prompt that tries to drop the rules (« ignore
+  previous instructions », « show me the system prompt »). Nothing is sent, nothing is saved. « Quel est
+  mon salaire ? », « salaire de base », « congés de maternité » still go through.
+- **Input, cleaned**: e-mail addresses, phone numbers, French social security numbers, IBANs and card
+  numbers are replaced by `[kind]` in what the model sees and in the stored history. A message made only
+  of personal details is not sent. Dates and the user's name are kept: a leave request needs them.
+- **Output**: the same personal details are removed from the answer (or the whole answer is refused,
+  `GUARDRAILS_OUTPUT=refuse`). What was streamed is replaced. An answer that names another employee's
+  personal data is never shown. A leave plan waiting for `/confirm` is left as it is.
+
+`GUARDRAILS=false` or `/settings guardrails off` turns the interceptors off: the system prompt is then
+the only guard. The web tools still have their own filter ([T3]).
+
 ## Semantic cache ([A6])
 
 A question that means the same as an earlier one gets the stored answer, with no model call:
@@ -536,7 +559,7 @@ sensai/
 │   ├── Commands.py           # Session state and the slash commands
 │   ├── Memories/             # SQLite: users, conversations, history, compression, token limit
 │   ├── Runtime/              # .env loading, personas, models, settings and parameters
-│   ├── Agents/               # ReAct loop, tool registry, router, engine, tool providers
+│   ├── Agents/               # ReAct loop, tool registry, router, engine, guardrails, tool providers
 │   ├── Tools/                # tools.json, web search, page reader, privacy filter
 │   ├── Cache/                # semantic cache: storage, policy, chat glue
 │   ├── Export/               # [X3] JSON / Markdown / PDF export (fpdf2, Noto Sans font) and public links
@@ -575,6 +598,7 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 | Model unavailable / bad request | Clear error message, session continues |
 | Connection dropped mid-stream | Error message, that turn is not saved |
 | Context over the token limit | Message refused with the way out (`/new`), or sent with a warning (`TOKEN_LIMIT_ACTION=continue`) |
+| Out-of-scope or unsafe prompt | Message refused before the model ([EV2]); the user can rephrase in the same chat |
 | Model without tool calling | Answers without tools, one dimmed note |
 | A tool fails | The error goes back to the model, which can correct itself |
 | Embedding model missing | Semantic cache turned off for the session, one note |
@@ -583,7 +607,9 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 
 - Everything was tested against a fake Ollama: the real behaviour depends on the model.
 - The privacy filter catches patterns (e-mail, phone, social security number, IBAN, card), the account id and
-  the profile's name, not any other name.
+  the profile's name, not any other name. The chat guardrails catch another employee's salary or absences
+  when the wording is clear; « les congés de sophie » (no capital) is not detected, on purpose, so
+  « congés de maternité » still works.
 - The reasoning trace is not saved: after a reload, the answer is shown without it.
 - A leave request worded without a leave verb ("je commence le 3 et je termine le 6, raison : deuil") is not
   recognised as one: it keeps the HR excerpts, and a small model then often explains the rules instead of acting.
@@ -596,7 +622,7 @@ python -m unittest discover -s back/tests -p "Test_*.py"
 
 ## Roadmap
 
-Planned or open: input/output guardrails, telling the employee when HR decides, and an advanced RAG (the passages used under each answer, questions on a selection of documents).
+Planned or open: telling the employee when HR decides, and an advanced RAG (the passages used under each answer, questions on a selection of documents).
 
 ## Team
 

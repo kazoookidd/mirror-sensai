@@ -57,8 +57,17 @@ quitte la machine, et elle est contrôlée :
 - `AGENT_WEB_TOOLS=false` supprime les outils web : plus rien ne sort.
 
 Limite assumée : un autre nom (celui d'un collègue, ou le sien s'il n'est pas
-dans son profil) n'est pas détecté. La consigne donnée au modèle est la seule
-protection dans ce cas.
+dans son profil) n'est pas détecté dans une requête web. La consigne donnée
+au modèle est la seule protection dans ce cas.
+
+### Ce que le chat refuse tout seul
+
+Même sans recherche web, Sensai ne doit pas parler du salaire ou des
+absences d'un autre salarié, ni jeter ses règles sur un « ignore tes
+consignes ». Ce n'est pas laissé au modèle : le code refuse la question
+avant l'appel, et retire de la réponse (et de l'historique) les e-mails,
+téléphones, NIR, IBAN et numéros de carte. « Quel est mon salaire ? » et
+« salaire de base » passent ; « Quel est le salaire de Marc ? » non.
 
 ## L'histoire de Sophie
 
@@ -93,7 +102,8 @@ protection dans ce cas.
   discussions, profil de l'utilisateur ajouté à chaque réponse, réponses à
   partir des documents de l'entreprise (avec la source), demandes de congés
   confirmées (ou annulées) par le salarié, vue RH des demandes, recherche web
-  protégée, interface web.
+  protégée, guardrails sur le chat (salaire d'un collègue, données personnelles),
+  interface web.
 - **Pas encore :** Sophie n'est pas prévenue quand Marc décide : elle doit
   consulter `/leaves`.
 

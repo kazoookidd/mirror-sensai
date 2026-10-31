@@ -1,0 +1,128 @@
+Pourquoi les guardrails EV2 sont faits comme ça
+===============================================
+
+Le brief EV2 (catalogue de features) demande des interceptors sur l'entrée
+et la sortie : bloquer un prompt hors périmètre ou dangereux avant le
+modèle ; sur la sortie, détecter des données personnelles ou un contenu
+inapproprié, et anonymiser ou refuser, selon des règles configurables.
+
+Les exemples du catalogue collent déjà à Sensai : un assistant RH qui
+refuse de parler du salaire d'un collègue ; un assistant qui anonymise
+des données personnelles avant de les envoyer au modèle.
+
+
+Ce qui existait déjà, et pourquoi ce n'est pas EV2
+--------------------------------------------------
+
+T3 (recherche web) a déjà Tools/privacy.py : e-mail, téléphone, NIR, IBAN,
+carte, plus l'identifiant du compte, sont retirés de ce qui PART vers
+Brave / Tavily / Exa.
+
+Ce n'est pas EV2. T3 protège ce qui quitte la machine. EV2 protège le
+chat lui-même : une question sur Marc n'a pas besoin du web pour être
+dangereuse, et une réponse qui recopie un NIR se retrouve dans SQLite,
+dans un export, ou dans un lien de partage X3, sans jamais sortir sur
+Internet.
+
+Le system prompt dit déjà « ne donne jamais d'information sur un autre
+salarié ». EV2 ne s'y fie pas : un petit modèle, un jailbreak, ou une
+réponse servie par le cache peut quand même fuiter. Le brief parle
+d'interceptors, pas d'une consigne de plus.
+
+
+Pourquoi des règles dans le code, pas un second modèle
+------------------------------------------------------
+
+Pas de LLM-as-judge ici. EV1 (évaluation automatique) est une autre
+tâche. Sensai tourne en local, souvent avec qwen2.5:3b, et chaque appel
+compte déjà. Un second modèle pour filtrer ajouterait de la latence, une
+dépendance, et des faux positifs difficiles à tester.
+
+Les autres gardes du projet (Router.py, TokenLimit, privacy.py) sont
+déjà déterministes et testées sans Ollama. EV2 suit le même modèle :
+regex + liste fermée, tests unitaires, un fake HTTP pour le tour de chat.
+
+
+Pourquoi chat_turn, pas une couche à part
+-----------------------------------------
+
+CLI et web passent tous les deux par Chatbot.chat_turn. C'est déjà là
+que le cache, la limite de tokens et l'appel modèle se décident. Brancher
+les interceptors ailleurs (route FastAPI seule, ou seulement Engine)
+aurait créé deux comportements.
+
+Ordre choisi, volontairement :
+
+  1. entrée  — avant le cache, le RAG et le modèle. Une question hors
+     périmètre ne doit ni coûter un appel, ni servir une vieille réponse
+     du cache.
+  2. sortie  — après generate_reply, avant save_message et le cache.
+     retract() existe déjà pour la boucle ReAct : on s'en sert pour
+     remplacer ce qui a été streamé. Limite assumée : dans le terminal,
+     retract n'efface pas la ligne (c'est déjà le cas pour l'agent).
+
+Les commandes slash (/confirm, /leaves, /profile) ne passent pas par
+chat_turn : elles ne sont pas filtrées. /confirm doit exécuter exactement
+le plan montré. Un plan de congé en attente n'est pas non plus retravaillé
+en sortie : l'utilisateur confirme des dates, pas un texte anonymisé.
+
+
+Pourquoi ces règles-là, et pas un filtre « unsafe » générique
+-------------------------------------------------------------
+
+Sensai n'est pas un chatbot grand public. Le risque métier, c'est le RH :
+
+  * salaire / NIR / absences d'un AUTRE salarié  — l'exemple même du
+    catalogue. « mon salaire », « salaire de base », « congés de
+    maternité » restent autorisés : ce sont les règles ou la situation
+    de la personne qui pose la question.
+  * jailbreak  — « ignore tes consignes », system prompt, developer mode.
+    « ignore the previous date » n'est pas pris : sinon on casse le chat
+    RH le plus banal.
+  * PII structurée  — les mêmes motifs que T3 (e-mail, téléphone, NIR,
+    IBAN, carte). On réutilise Tools/privacy.py (mask avec [kind] dans
+    le chat, redact avec des blancs dans les requêtes web). On ne retire
+    PAS le nom du compte : « je pose un congé » a besoin de l'identité,
+    et « Sophie » dans une réponse est normal.
+
+On n'anonymise pas les dates. file_leave_request casserait, et A3
+(confirmation) montre précisément ces dates.
+
+
+Pourquoi redact par défaut, refuse en option
+--------------------------------------------
+
+Le brief dit « anonymize or refuse, per configurable rules ».
+GUARDRAILS_OUTPUT=redact garde une réponse utile (« écrivez à [e-mail] »).
+refuse est plus dur, pour une démo ou une politique plus stricte.
+
+Un salaire de collègue dans la sortie est toujours refusé, même en mode
+redact : masquer un e-mail suffit, masquer « Marc gagne 4200 € » ne
+change rien au problème.
+
+
+Configuration, comme le reste du projet
+---------------------------------------
+
+  * GUARDRAILS=true / GUARDRAILS_OUTPUT=redact dans .env
+  * /settings guardrails on|off et /settings guardrails-output redact|refuse
+    (le même mécanisme que token-limit et documents)
+  * page Settings de l'interface web, section Privacy
+
+Pas de framework type NeMo Guardrails. Le projet s'interdit LangChain et
+les couches du même genre ; une liste de règles Python reste lisible,
+testable, et alignée avec Router.py.
+
+
+Limites assumées
+----------------
+
+  * Un prénom mal capitalisé dans « les congés de sophie » passe : on
+    n'accepte un nom après « congés de » que s'il est capitalisé, pour
+    ne pas bloquer « congés de maternité ». « salaire de marc » est
+    quand même pris (sujet plus sensible, liste d'exclusions pour
+    « base », « brut », « salarié »…).
+  * Un autre nom dans une question qui n'est ni salaire, ni NIR, ni
+    absences n'est pas détecté. T3 a la même limite.
+  * Ce n'est pas un filtre de modération général (insultes, violence).
+    Hors sujet pour un assistant RH interne.
