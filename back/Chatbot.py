@@ -39,6 +39,7 @@ from Commands import Session, handle_command, select_conversation
 from rag.Attachments import SHARE_OF_ROOM, attachments_message, has_attachments
 from rag.Retriever import rag_message
 from Agents.Engine import generate_reply
+from Agents.Guardrails import enabled as guardrails_on, inspect_input, inspect_output, parse_output_action
 from Agents.ReAct import tool_calls_in_text
 from Agents.Router import asks_for_leave
 from Cache.Chat import CacheTurn, check as check_cache, hit_note, remember as remember_answer
@@ -274,6 +275,14 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # [M1] The profile is read again at every turn: /profile or the web page may have
     # changed it. It is part of the system prompt, so also of the cache fingerprint.
     refresh_profile(session)
+    if guardrails_on(session):
+        screened = inspect_input(user_input)
+        if screened.blocked:
+            session.out.error(screened.message)
+            return False
+        if screened.note:
+            session.out.note(screened.note)
+        user_input = screened.text
     # Without the HR documents, a cached answer written from them would not be the answer asked for.
     skip_cache = has_attachments(session.conversation_id) or not session.hr_documents
     cache_turn = CacheTurn() if skip_cache else check_cache(session, user_input)
@@ -316,13 +325,24 @@ def chat_turn(session: Session, user_input: str) -> bool:
         # to roll back, just let the user retry.
         return False
 
+    screened = None
+    if guardrails_on(session) and reply.text.strip() and session.pending_action is None:
+        screened = inspect_output(reply.text, session.guardrails_output)
+        if screened.changed:
+            session.out.retract()
+            reply.text = screened.message if screened.blocked else screened.text
+            session.out.answer(reply.text)
+            if screened.note:
+                session.out.note(screened.note)
+
     save_message(session.conversation_id, "user", user_input)
     save_message(session.conversation_id, "assistant", reply.text)
     record_model(session.conversation_id, session.model)
     if stopped:
         return True
-    remember_answer(session, cache_turn, user_input, reply.text,
-                    used_tools=reply.used_tools, had_history=had_history)
+    if screened is None or not screened.changed:
+        remember_answer(session, cache_turn, user_input, reply.text,
+                        used_tools=reply.used_tools, had_history=had_history)
 
     if session.show_token_usage:
         # Prefer Ollama's own counts; fall back to the estimate if absent.
@@ -421,6 +441,10 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
     if action_warning:
         print(f"[Warning: {action_warning}]")
 
+    guardrails_output, output_warning = parse_output_action(os.getenv("GUARDRAILS_OUTPUT"))
+    if output_warning:
+        print(f"[Warning: {output_warning}]")
+
     temperature, temperature_error = parse_temperature(args.temperature)
     if temperature_error:
         print(f"[Warning: {temperature_error} Using the model default.]")
@@ -441,6 +465,8 @@ def build_session(args, user_id: str, conversation_id: int) -> Session:
         search_motor=os.getenv("SEARCH_ENGINE", "tavily").strip().lower() or "tavily",
         token_limit_action=token_limit_action,
         show_token_usage=parse_bool(os.getenv("SHOW_TOKEN_USAGE"), True),
+        guardrails=parse_bool(os.getenv("GUARDRAILS"), True),
+        guardrails_output=guardrails_output,
         temperature=temperature,
         seed=seed,
         num_predict=num_predict,
