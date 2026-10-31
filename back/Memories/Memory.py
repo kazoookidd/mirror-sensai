@@ -2,19 +2,34 @@ from .Database import get_connection
 from .Conversations import touch_conversation
 
 
-def save_message(conversation_id: int, role: str, content: str) -> None:
+def save_message(conversation_id: int, role: str, content: str) -> int:
     """Persist a single message to a conversation's history, and bump the
-    conversation's updated_at so it sorts first in the conversation list."""
+    conversation's updated_at so it sorts first in the conversation list. Returns its id."""
     conn = get_connection()
     try:
-        conn.execute(
+        message_id = conn.execute(
             "INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)",
             (conversation_id, role, content)
-        )
+        ).lastrowid
         conn.commit()
     finally:
         conn.close()
     touch_conversation(conversation_id)
+    return message_id
+
+
+def replace_message(conversation_id: int, old: str, new: str) -> None:
+    """Give the last assistant message reading `old` the text `new`."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE messages SET content = ? WHERE id = (SELECT MAX(id) FROM messages "
+            "WHERE conversation_id = ? AND role = 'assistant' AND content = ?)",
+            (new, conversation_id, old)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def load_history(conversation_id: int) -> list[dict]:

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from Memories.Branches import branch_ids, delete_family, family, rename_family, root_of, versions
 from Memories.Conversations import get_conversation, list_conversations
 from Memories.Memory import load_history
+from Memories.Sources import sources_by_position
 from rag.Attachments import list_attachments
 from Web.Output import pending_confirmation
 from Web.Sessions import WebSession, current
@@ -47,13 +48,22 @@ def conversations(web: WebSession = Depends(current)):
     return {"conversations": items}
 
 
+def _with_sources(conversation_id: int) -> list[dict]:
+    """[R2] The history, each answer with the HR document passages it came from."""
+    history = load_history(conversation_id)
+    for message, sources in zip(history, sources_by_position(conversation_id)):
+        if sources:
+            message["sources"] = sources
+    return history
+
+
 @router.get("/conversations/{conversation_id}/messages")
 def messages(conversation_id: int, web: WebSession = Depends(current)):
     conversation = owned(conversation_id, web)
     root = root_of(conversation_id)
     return {
         "conversation": {**conversation, "title": get_conversation(root)["title"], "root_id": root},
-        "messages": load_history(conversation_id),
+        "messages": _with_sources(conversation_id),
         "versions": versions(conversation_id),
         "attachments": list_attachments(conversation_id),
         # [A3] The waiting action belongs to the conversation of the last chat turn.

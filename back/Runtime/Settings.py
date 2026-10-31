@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from Agents.Guardrails import DEFAULT_OUTPUT, OUTPUT_ACTIONS
+from Memories.Auth import ROLE_HR
 from Memories.TokenLimit import DEFAULT_ACTION, LIMIT_ACTIONS
 from Runtime.Parameters import (
     MAX_NUM_PREDICT,
@@ -78,6 +79,8 @@ class Setting:
     parse: Parser
     describe: Callable[[Any], str]
     aliases: tuple[str, ...] = ()
+    # [EV2] The guardrails protect the other employees: the employee they restrict cannot turn them off.
+    hr_only: bool = False
 
 
 SETTINGS: tuple[Setting, ...] = (
@@ -133,6 +136,7 @@ SETTINGS: tuple[Setting, ...] = (
         accepted="on or off",
         parse=parse_switch,
         describe=describe_switch,
+        hr_only=True,
     ),
     Setting(
         name="guardrails-output",
@@ -142,6 +146,16 @@ SETTINGS: tuple[Setting, ...] = (
         parse=parse_output_action_strict,
         describe=str,
         aliases=("guardrail-output",),
+        hr_only=True,
+    ),
+    Setting(
+        name="sources",
+        attribute="show_sources",
+        summary="show the HR document passages each answer comes from, with their score",
+        accepted="on or off",
+        parse=parse_switch,
+        describe=describe_switch,
+        aliases=("show-sources",),
     ),
     Setting(
         name="seed",
@@ -180,9 +194,15 @@ def current_value(session, setting: Setting) -> str:
     return setting.describe(getattr(session, setting.attribute))
 
 
+def may_change(session, setting: Setting) -> bool:
+    return not setting.hr_only or getattr(session, "account_role", None) == ROLE_HR
+
+
 def apply_setting(session, setting: Setting, text: str) -> tuple[str | None, str | None]:
     """Parse `text` and store it on the session.
     Returns (new value as displayed, error). On error nothing is changed."""
+    if not may_change(session, setting):
+        return None, "only HR accounts can change this setting."
     value, error = setting.parse(text)
     
     if error:

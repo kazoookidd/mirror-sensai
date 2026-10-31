@@ -14,6 +14,7 @@ from Memories.Conversations import (
     create_conversation,
     list_conversations,
 )
+from Memories.Memory import replace_message
 from Memories.TokenLimit import DEFAULT_ACTION
 from Agents.Guardrails import DEFAULT_OUTPUT
 from Agents.Confirmation import PendingAction
@@ -47,7 +48,8 @@ from Runtime.Settings import (
 from Runtime.Models import list_models, resolve_model, looks_like_embedding_model
 from Runtime.Output import CliOutput
 from Tools.web_search import print_search_moteur, switch_search_motor
-from rag.Store import DEFAULT_DOCS_DIR, index_directory
+from rag.Scope import describe_scope, parse_scope
+from rag.Store import DEFAULT_DOCS_DIR, document_statuses, index_directory
 from Cache.Chat import get_cache, invalidate as invalidate_cache
 from Export.Formats import export
 
@@ -76,6 +78,7 @@ HELP_TEXT = """Available commands:
                                 /profile language clear, /profile clear to empty it)
   /ingest [folder]              HR accounts: index HR documents so answers can use them (default: data/docs)
   /cache [clear]                show the semantic cache, or empty it
+  /scope [docs|types|off]       search only some HR documents (names, or pdf/md/txt), or all again
   /export [md|json|pdf]         save this conversation to a file in exports/ (default: md)
   exit                          quit
 
@@ -118,6 +121,10 @@ class Session:
     semantic_cache: bool = True
     # [R1] search the HR documents for each question (/settings documents off to answer without them)
     hr_documents: bool = True
+    # [R2] show the HR document passages each answer comes from (/settings sources off to hide them)
+    show_sources: bool = True
+    # [R2] search only these HR documents or types (/scope), None: all of them
+    document_scope: dict | None = None
     seed: int | None = None
     num_predict: int | None = None
     # Where the chat turn writes what the user sees (Runtime/Output.py)
@@ -279,6 +286,12 @@ def switch_model(session: Session, requested: str) -> None:
 # [A3] Confirmation of a critical action prepared by the agent
 # ---------------------------------------------------------------------
 
+def settle_pending_action(pending, outcome: str) -> None:
+    """[A3] The chat keeps what happened, not the "nothing has been done yet" of the plan."""
+    if pending.conversation_id is not None:
+        replace_message(pending.conversation_id, pending.render(), pending.settled(outcome))
+
+
 def confirm_pending_action(session: Session) -> None:
     """[A3] The only place where a critical action is really carried out."""
     pending = session.pending_action
@@ -296,6 +309,7 @@ def confirm_pending_action(session: Session) -> None:
         return
 
     session.pending_action = None
+    settle_pending_action(pending, result)
     print(pending.plan)
     print(result)
 
@@ -304,9 +318,10 @@ def cancel_pending_action(session: Session) -> None:
     if session.pending_action is None:
         print("No action is waiting for confirmation.")
         return
-    title = session.pending_action.title
+    pending = session.pending_action
     session.pending_action = None
-    print(f"Dropped: {title}. Nothing was done.")
+    settle_pending_action(pending, "Cancelled: nothing was done.")
+    print(f"Dropped: {pending.title}. Nothing was done.")
 
 
 HR_COMMANDS = {"approve": STATUS_APPROVED, "refuse": STATUS_REFUSED, "pending": STATUS_PENDING}
@@ -455,6 +470,20 @@ def print_settings(session: Session) -> None:
           "or see what it accepts with /settings <name>.")
 
 
+def scope_command(session: Session, argument: str) -> None:
+    """[R2] /scope: the HR documents searched; /scope a.md pdf: only those; /scope off: all of them again."""
+    words = argument.split()
+    if words and words[0].lower() in ("off", "all"):
+        session.document_scope = None
+    elif words:
+        scope, error = parse_scope(words, [item["source"] for item in document_statuses(DEFAULT_DOCS_DIR)])
+        if error:
+            print(f"Error: {error} Usage: /scope a.md b.pdf, /scope pdf, or /scope off")
+            return
+        session.document_scope = scope
+    print(f"Searching in {describe_scope(session.document_scope)}.")
+
+
 def change_setting(session: Session, argument: str) -> None:
     if not argument:
         print_settings(session)
@@ -582,6 +611,8 @@ def handle_command(session: Session, text: str) -> bool:
         ingest_documents(session, argument)
     elif command == "/cache":
         cache_command(session, argument)
+    elif command == "/scope":
+        scope_command(session, argument)
     elif command == "/export":
         export_conversation(session, argument)
     else:

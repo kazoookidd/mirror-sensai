@@ -14,6 +14,7 @@ import sqlite3
 from .Conversations import create_conversation, delete_conversation, get_conversation, rename_conversation
 from .Database import get_connection
 from .Memory import load_history
+from .Sources import copy_sources
 
 BRANCH_TITLE = "{title} (branch {number})"
 
@@ -92,6 +93,7 @@ def create_branch(conversation_id: int, keep: int) -> int:
         conn.commit()
     finally:
         conn.close()
+    copy_sources(conversation_id, branch)
     return branch
 
 
