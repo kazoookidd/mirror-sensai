@@ -30,6 +30,8 @@ is an HR assistant, centred on employee onboarding.
 - **Semantic cache** ([A6]): a question that means the same as an earlier one is answered instantly, with
   no model call
 - **RAG over HR documents** ([R1]): answers grounded in your own .txt / .md / .pdf files
+- **Advanced RAG** ([R2]): the passages found are reranked with their keywords, scored one by one (near-misses
+  are dropped), shown under each answer with their score, and the search can be limited to some documents
 - **Human in the loop** ([A3]): before a critical action the agent suspends and presents its plan; it only
   proceeds after your explicit `/confirm` (or you drop it with `/cancel`). Filing a leave request is the
   critical action: tell Sensai "I take Monday off" in the chat, nothing is written until you confirm
@@ -116,7 +118,7 @@ reads its settings (`back/Runtime/Env.py`), and a variable already set in the sh
 over the file:
 
 ```env
-MODEL=llama3.1
+MODEL=qwen2.5:3b
 OLLAMA_BASE_URL=http://localhost:11434
 SYSTEM_PROMPT_PATH=back/config/system_prompt.txt
 ```
@@ -335,7 +337,8 @@ that. Every chat turn, in the terminal and in the web UI, goes through intercept
   personal data is never shown. A leave plan waiting for `/confirm` is left as it is.
 
 `GUARDRAILS=false` or `/settings guardrails off` turns the interceptors off: the system prompt is then
-the only guard. The web tools still have their own filter ([T3]).
+the only guard. Only HR accounts can change `guardrails` and `guardrails-output` (CLI, Settings page, API: 403
+for an employee), since these rules protect the other employees. The web tools still have their own filter ([T3]).
 
 ## Semantic cache ([A6])
 
@@ -525,7 +528,7 @@ do not answer": small models then refused leave requests and web searches whenev
 | Chunk    | `back/rag/Chunker.py`    | splits text into ~500-token chunks with a 50-token overlap, at paragraph, sentence, line then word boundaries          |
 | Embed    | `back/rag/Embeddings.py` | turns each chunk into a vector with Ollama`/api/embed` (`bge-m3`)                                                      |
 | Store    | `back/rag/Store.py`      | saves chunks and vectors in SQLite, re-embeds only new or modified files                                               |
-| Retrieve | `back/rag/Retriever.py`  | embeds the question, ranks chunks by cosine similarity, keeps the best ones above a threshold, within the token budget |
+| Retrieve | `back/rag/Retriever.py`  | embeds the question, takes the 10 chunks closest by meaning, reranks them with their keywords (R2), keeps the best ones above a threshold, within the token budget |
 
 ### Settings (`.env`)
 
@@ -535,14 +538,47 @@ do not answer": small models then refused leave requests and web searches whenev
 | `RAG_EMBED_MODEL`   | `bge-m3`           | Ollama model used for embeddings                      |
 | `RAG_CHUNK_TOKENS`  | `500`              | chunk size, in estimated tokens                       |
 | `RAG_CHUNK_OVERLAP` | `50`               | overlap between two chunks, in estimated tokens       |
-| `RAG_MIN_SCORE`     | `0.50`             | minimum similarity (0 to 1) for an excerpt to be used |
+| `RAG_MIN_SCORE`     | `0.50`             | minimum final score (0 to 1) for an excerpt to be used |
 | `RAG_TOP_K`         | `3`                | maximum number of excerpts per question               |
+| `RAG_CANDIDATES`    | `10`               | chunks closest by meaning that are reranked ([R2])     |
+| `RAG_KEYWORD_WEIGHT`| `0.15`             | share of the keyword score in the final score ([R2], 0: meaning only) |
 
 Changing `RAG_EMBED_MODEL` or the chunk settings requires running `/ingest` again.
+
+### Advanced RAG ([R2])
+
+Three additions on top of the pipeline above, measured in
+[docs/benchmarks/rag_reranking.md](docs/benchmarks/rag_reranking.md):
+
+- **Reranking**: the 10 chunks closest by meaning are scored again with the rare words of the question they
+  contain (BM25, written by hand in `back/rag/Keywords.py`, accents and common words ignored). Final score =
+  `0.85 x meaning + 0.15 x keywords`. With `bge-m3`, the margin between the weakest right passage and the best
+  off-topic question grows from 0.084 to 0.110, so the threshold drops near-misses more safely. Reranking with
+  the chat model was measured and ruled out: worse ranking, and 12 s more per question on a laptop.
+- **Score per excerpt**: each excerpt keeps its meaning, keyword and final score; only the final score is
+  compared to `RAG_MIN_SCORE`. Under each answer, **View sources** lists the passages used (document, page,
+  score, excerpt); in the CLI, a dimmed `sources:` line. They are saved with the answer (`message_sources`,
+  copied into a branch), so they are still there after a reload. `/settings sources off` (or "Show sources" in
+  Settings) hides them.
+- **Metadata filter**: search only some documents, or some types. In the web interface, tick documents in
+  Knowledge base (HR) or in the HR documents of My files, then **Ask about the selection**: a new chat opens, and
+  a "Searching only in ..." tag in the composer shows the filter until it is removed. In the CLI:
+
+```
+You: /scope loi_teletravail.md pdf
+Searching in loi_teletravail.md, every .pdf file.
+You: /scope off
+Searching in every HR document.
+```
+
+  While a filter is set, the semantic cache is not used (the answer depends on the documents searched).
+
+![Sources under an answer](docs/images/r2-sources.png)
 
 ### Limits
 
 - Scanned PDFs (images without text) are skipped: there is no OCR.
+- An answer served from the semantic cache, or a shared or exported chat, shows no sources.
 - The 0.50 threshold was measured with `bge-m3` on the demo documents
   ([docs/benchmarks/embedding_models.md](docs/benchmarks/embedding_models.md)). With other documents or
   another embedding model, measure it again (`nomic-embed-text` needs about 0.70).

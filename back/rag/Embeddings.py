@@ -4,8 +4,6 @@ import requests
 
 DEFAULT_EMBED_MODEL = "bge-m3"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-# Written for nomic-embed-text, kept for bge-m3: they widen its gap between the right passage
-# and an off-topic question (docs/benchmarks/embedding_models.md).
 DOCUMENT_PREFIX = "search_document: "
 QUERY_PREFIX = "search_query: "
 BATCH_SIZE = 32
@@ -37,7 +35,7 @@ def _post_embed(base_url: str, model: str, batch: list[str]):
         response.raise_for_status()
         payload = response.json()
     except requests.exceptions.ConnectionError:
-        logger.warning(f"cannot connect to Ollama at {base_url}, is it running? (ollama serve)")
+        logger.debug(f"cannot connect to Ollama at {base_url}")
         return None
     except requests.exceptions.HTTPError as e:
         logger.warning(f"embedding model {model!r} unavailable (ollama pull {model}?) ({e})")

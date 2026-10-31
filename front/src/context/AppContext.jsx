@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { auth } from "../api/auth.js";
 import { conversations as conversationsApi } from "../api/conversations.js";
+import { documents as documentsApi } from "../api/documents.js";
 import { models as modelsApi, status as statusApi } from "../api/ollama.js";
 import { personas as personasApi } from "../api/personas.js";
 import { settings as settingsApi } from "../api/settings.js";
@@ -22,6 +23,8 @@ export function AppProvider({ children }) {
   const [personas, setPersonas] = useState([]);
   const [persona, setPersona] = useState("");
   const [hrDocuments, setHrDocuments] = useState(true);
+  const [showSources, setShowSources] = useState(true);
+  const [documentScope, setDocumentScope] = useState(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -78,6 +81,8 @@ export function AppProvider({ children }) {
       const data = await settingsApi.get();
       setContext((current) => ({ ...current, budget: data.context_budget }));
       setHrDocuments(data.hr_documents);
+      setShowSources(data.show_sources ?? true);
+      setDocumentScope(data.document_scope ?? null);
     } catch {
       // The gauge stays hidden until the first answer reports it.
     }
@@ -86,6 +91,15 @@ export function AppProvider({ children }) {
   const switchHrDocuments = useCallback(async (on) => {
     await settingsApi.set("documents", on ? "on" : "off");
     setHrDocuments(on);
+  }, []);
+
+  const switchShowSources = useCallback(async (on) => {
+    await settingsApi.set("sources", on ? "on" : "off");
+    setShowSources(on);
+  }, []);
+
+  const chooseScope = useCallback(async (scope) => {
+    setDocumentScope((await documentsApi.scope(scope ?? {})).scope);
   }, []);
 
   const startSession = useCallback(async (account) => {
@@ -127,11 +141,11 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => ({
     ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona, hrDocuments,
-    setContext, setModel, refreshStatus, refreshModels, refreshConversations, refreshPersonas,
-    chooseModel, choosePersona, switchHrDocuments, startSession, logout,
+    showSources, documentScope, setContext, setModel, refreshStatus, refreshModels, refreshConversations, refreshPersonas,
+    chooseModel, choosePersona, switchHrDocuments, switchShowSources, chooseScope, startSession, logout,
   }), [ready, user, ollama, models, model, modelInstalled, context, conversations, personas, persona, hrDocuments,
-    refreshStatus, refreshModels, refreshConversations, refreshPersonas, chooseModel, choosePersona, switchHrDocuments,
-    startSession, logout]);
+    showSources, documentScope, refreshStatus, refreshModels, refreshConversations, refreshPersonas, chooseModel,
+    choosePersona, switchHrDocuments, switchShowSources, chooseScope, startSession, logout]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

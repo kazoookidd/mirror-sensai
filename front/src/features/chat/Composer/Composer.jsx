@@ -7,6 +7,7 @@ import { Icon } from "../../../components/ui/Icon/Icon.jsx";
 import { IconButton } from "../../../components/ui/IconButton/IconButton.jsx";
 import { ACCEPTED } from "../../documents/useImport.js";
 import { Attachments } from "./Attachments.jsx";
+import { ScopeTag } from "./ScopeTag.jsx";
 import { ContextGauge } from "./ContextGauge.jsx";
 import styles from "./Composer.module.css";
 
@@ -76,6 +77,7 @@ export const Composer = forwardRef(function Composer({ onSend, onStop, busy, att
       {commands.length > 0 && (
         <CommandMenu commands={commands} highlighted={highlighted} onChoose={choose} onHighlight={setHighlighted} />
       )}
+      <ScopeTag />
       <Attachments attachments={attachments} attaching={attaching} />
       <textarea
         ref={input}

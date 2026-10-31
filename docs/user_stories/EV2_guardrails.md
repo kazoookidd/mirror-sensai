@@ -42,6 +42,8 @@ Critères d'acceptation :
   ce n'est pas une demande de jeter les consignes
 - `GUARDRAILS=false` ou `/settings guardrails off` coupe les interceptors :
   le system prompt reste alors la seule protection
+- Seul un compte RH peut changer `guardrails` et `guardrails-output` : un salarié voit
+  les réglages grisés (« Set by HR for every employee. ») et le serveur refuse (403)
 
 **US-EV2-03**
 En tant que salarié, je veux que mes numéros personnels (NIR, IBAN, carte,

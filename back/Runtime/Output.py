@@ -79,3 +79,11 @@ class CliOutput:
 
     def confirmation(self, title: str, plan: str) -> None:
         """[A3] An action waits for /confirm or /cancel. The terminal already shows it in the answer."""
+
+    def sources(self, sources: list[dict]) -> None:
+        """[R2] The HR document passages the answer comes from, with their final score."""
+        listed = []
+        for source in sources:
+            page = "" if source["page"] is None else f", p. {source['page']}"
+            listed.append(f"{source['source']}{page} ({source['score']:.2f})")
+        print(small(f"sources: {', '.join(listed)}"))

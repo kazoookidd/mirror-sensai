@@ -392,8 +392,16 @@ class TestSettings(RuntimeTestCase):
         self.run_command(session, "/settings token-limit block")
         self.assertEqual(session.token_limit_action, "block")
 
+    def test_only_hr_accounts_change_the_guardrails(self):
+        session = self.make_session()  # an employee account
+        _, out = self.run_command(session, "/settings guardrails off")
+        self.assertTrue(session.guardrails)
+        self.assertIn("only HR accounts can change this setting", out)
+        self.run_command(session, "/settings guardrails-output refuse")
+        self.assertEqual(session.guardrails_output, "redact")
+
     def test_changes_guardrails(self):
-        session = self.make_session()
+        session = self.make_session(account_role="hr")
         self.assertTrue(session.guardrails)
         self.assertEqual(session.guardrails_output, "redact")
         self.run_command(session, "/settings guardrails off")

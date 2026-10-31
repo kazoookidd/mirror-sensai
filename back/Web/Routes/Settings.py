@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from Memories.TokenLimit import get_budget
-from Runtime.Settings import apply_setting, find_setting
+from Runtime.Settings import apply_setting, find_setting, may_change
 from Web.Sessions import WebSession, current
 
 router = APIRouter()
@@ -24,6 +24,8 @@ def settings(web: WebSession = Depends(current)):
         "hr_documents": session.hr_documents,
         "guardrails": session.guardrails,
         "guardrails_output": session.guardrails_output,
+        "show_sources": session.show_sources,
+        "document_scope": session.document_scope,
     }
 
 
@@ -32,6 +34,8 @@ def change_setting(name: str, body: SettingValue, web: WebSession = Depends(curr
     setting = find_setting(name)
     if setting is None:
         raise HTTPException(status_code=404, detail=f"Unknown setting: {name}.")
+    if not may_change(web.session, setting):
+        raise HTTPException(status_code=403, detail="Only HR accounts can change this setting.")
     value, error = apply_setting(web.session, setting, body.value)
     if error:
         raise HTTPException(status_code=422, detail=error)

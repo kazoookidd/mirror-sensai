@@ -27,3 +27,8 @@
   box-shadow: var(--shadow-sm);
   color: var(--color-text-primary);
 }
+
+.option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

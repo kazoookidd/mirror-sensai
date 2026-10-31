@@ -7,6 +7,8 @@ import { DocumentsPage } from "./DocumentsPage.jsx";
 
 vi.mock("../../api/documents.js", () => ({ documents: { list: vi.fn(), upload: vi.fn(), rename: vi.fn(), remove: vi.fn() } }));
 vi.mock("../../layout/AppShell.jsx", () => ({ AppShell: ({ children }) => <div>{children}</div> }));
+const chooseScope = vi.fn().mockResolvedValue();
+vi.mock("../../context/AppContext.jsx", () => ({ useApp: () => ({ chooseScope }) }));
 
 const FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true };
 const doc = (source) => ({ source, status: "indexed", chunks: 2, size: 2048, modified: 1798538400 });
@@ -24,6 +26,14 @@ describe("DocumentsPage menu [R1]", () => {
     documents.list.mockResolvedValue({ embed_model: "bge-m3", documents: [doc("accord.md"), doc("charte.md")] });
   });
   afterEach(cleanup);
+
+  it("asks about the selected documents in a new chat that searches only them", async () => {
+    render(<MemoryRouter future={FUTURE}><DocumentsPage /></MemoryRouter>);
+    const rows = await screen.findByRole("table", { name: "Imported documents" });
+    fireEvent.click(within(rows).getByRole("checkbox", { name: "Select charte.md" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Ask about the selection · 1/ })[0]);
+    await waitFor(() => expect(chooseScope).toHaveBeenCalledWith({ sources: ["charte.md"] }));
+  });
 
   it("renames a document in place", async () => {
     render(<MemoryRouter future={FUTURE}><DocumentsPage /></MemoryRouter>);

@@ -12,6 +12,7 @@ from Memories.Auth import ROLE_HR
 from rag import Store
 from rag.Embeddings import embed_model
 from rag.Loader import SUPPORTED_EXTENSIONS, load_document
+from rag.Scope import make_scope
 from Web.Sessions import WebSession, current
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -22,6 +23,11 @@ router = APIRouter()
 
 class NewName(BaseModel):
     name: str
+
+
+class Scope(BaseModel):
+    sources: list[str] = []
+    types: list[str] = []
 # Two imports at once would index the same folder twice in parallel.
 _indexing = threading.Lock()
 
@@ -119,3 +125,14 @@ def delete(name: str, web: WebSession = Depends(current)):
         Store.forget_document(path.parent, name)
     invalidate_cache()
     return {"deleted": name}
+
+
+@router.put("/documents/scope")
+def set_scope(body: Scope, web: WebSession = Depends(current)):
+    """[R2] Search only these documents or types in the next answers (empty: all of them again), as /scope."""
+    known = [item["source"] for item in Store.document_statuses(Store.DEFAULT_DOCS_DIR)]
+    scope, error = make_scope(body.sources, body.types, known)
+    if error:
+        raise HTTPException(status_code=422, detail=error[0].upper() + error[1:])
+    web.session.document_scope = scope
+    return {"scope": scope}

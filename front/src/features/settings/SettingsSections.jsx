@@ -6,7 +6,6 @@ import { OllamaStatus } from "../ollama/OllamaStatus/OllamaStatus.jsx";
 import { PersonaSelect } from "../personas/PersonaSelect/PersonaSelect.jsx";
 import { Segmented } from "../../components/ui/Segmented/Segmented.jsx";
 import { Switch } from "../../components/ui/Switch/Switch.jsx";
-import { TestTag } from "../../components/feedback/TestTag/TestTag.jsx";
 import { useApp } from "../../context/AppContext.jsx";
 import { settings as settingsApi } from "../../api/settings.js";
 import { getTheme, setTheme } from "../../lib/theme.js";
@@ -22,7 +21,7 @@ const THEMES = [
 ];
 
 export function SettingsSections() {
-  const { ollama, refreshStatus } = useApp();
+  const { ollama, refreshStatus, showSources, switchShowSources } = useApp();
   const [values, setValues] = useState(null);
   const [theme, chooseTheme] = useState(getTheme);
 
@@ -66,8 +65,8 @@ export function SettingsSections() {
             onChange={(value) => { setTheme(value); chooseTheme(value); }} />
         </Setting>
         <Setting inline name="Show sources" description="Lists the passages used when the HR documents are searched.">
-          <TestTag />
-          <Switch checked disabled readOnly aria-label="Show sources (not available yet)" title="[TEST] Not available yet" />
+          <Switch checked={showSources} aria-label="Show sources"
+            onChange={(event) => switchShowSources(event.target.checked).catch(() => {})} />
         </Setting>
       </Section>
     </>

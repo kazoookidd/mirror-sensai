@@ -16,6 +16,7 @@ export const COMMANDS = [
   { name: "/profile", args: "[field [value]]", description: "Show your profile, or change one field (also in Profile)" },
   { name: "/ingest", description: "Index the HR documents of data/docs" },
   { name: "/cache", args: "[clear]", description: "Show the semantic cache, or empty it" },
+  { name: "/scope", args: "[docs|types|off]", description: "Search only some HR documents (names, or pdf/md/txt), or all again" },
   { name: "/export", args: "[md|json|pdf]", description: "Download this chat (default: Markdown)", local: true },
 ];
 

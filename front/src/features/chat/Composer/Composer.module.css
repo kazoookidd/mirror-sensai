@@ -100,6 +100,19 @@
   line-height: 16px;
 }
 
+.scope {
+  padding-right: 2px;
+  border-color: var(--color-accent-default);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-default);
+}
+
+.scopeClear {
+  width: 24px;
+  height: 24px;
+  color: inherit;
+}
+
 .reading {
   color: var(--color-text-secondary);
 }

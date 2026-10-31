@@ -84,6 +84,9 @@ class SseOutput:
     def confirmation(self, title: str, plan: str) -> None:
         self._emit("confirmation", title=title, plan=plan)
 
+    def sources(self, sources: list[dict]) -> None:
+        self._emit("sources", sources=sources)
+
 
 def pending_confirmation(session, conversation_id: int | None) -> dict | None:
     """[A3] The action waiting for /confirm or /cancel, as the card of `conversation_id` shows it:

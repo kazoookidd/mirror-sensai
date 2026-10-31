@@ -27,3 +27,7 @@ class PendingAction:
         """What the user sees while the agent is suspended."""
         return (f"=== {self.title} ===\n{self.plan}\n"
                 "Nothing has been done yet. Type /confirm to go ahead, or /cancel to drop it.")
+
+    def settled(self, outcome: str) -> str:
+        """What the conversation keeps once the user confirmed or cancelled."""
+        return f"=== {self.title.removesuffix(' to confirm')} ===\n{self.plan}\n{outcome}"

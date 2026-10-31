@@ -287,6 +287,19 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(client.put(f"{self.url}/api/settings/num-predict", json={"value": "default"}).status_code, 200)
         self.assertEqual(client.put(f"{self.url}/api/settings/nope", json={"value": "1"}).status_code, 404)
 
+    def test_only_hr_accounts_turn_the_guardrails_off(self):
+        from Memories.Auth import ROLE_EMPLOYEE
+        create_user("gina", "gina@example.com", "pw", role=ROLE_EMPLOYEE)
+        employee = self.login("gina@example.com")
+        refused = employee.put(f"{self.url}/api/settings/guardrails", json={"value": "off"})
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(employee.put(f"{self.url}/api/settings/guardrails-output", json={"value": "refuse"}).status_code, 403)
+        self.assertTrue(employee.get(f"{self.url}/api/settings").json()["guardrails"])
+        hr = self.login()
+        self.assertEqual(hr.put(f"{self.url}/api/settings/guardrails", json={"value": "off"}).status_code, 200)
+        self.assertFalse(hr.get(f"{self.url}/api/settings").json()["guardrails"])
+        hr.put(f"{self.url}/api/settings/guardrails", json={"value": "on"})
+
     def test_profile_is_saved_checked_and_used_by_the_next_answer(self):
         client = self.login("bob@example.com")
         self.assertEqual(client.get(f"{self.url}/api/profile").json(),
@@ -466,6 +479,16 @@ class TestWebApi(unittest.TestCase):
         self.assertIn("Dropped: Leave request to confirm", cancel["output"])
         self.assertIsNone(cancel["pending"])
         self.assertIsNone(client.get(url).json()["pending"])
+        saved = client.get(url).json()["messages"][-1]["content"]
+        self.assertTrue(saved.endswith("Cancelled: nothing was done."), saved)
+        self.assertNotIn("Nothing has been done yet", saved)
+
+        stream = events(self.chat(client, "Je pose lundi et mardi", conversation_id=conversation, answer=(call,)))
+        confirm = client.post(f"{self.url}/api/command", json={"text": "/confirm", "conversation_id": conversation}).json()
+        self.assertIn("saved for carol", confirm["output"])
+        saved = client.get(url).json()["messages"][-1]["content"]
+        self.assertIn("saved for carol", saved)
+        self.assertNotIn("Nothing has been done yet", saved)
         self.assertIsNone(client.post(f"{self.url}/api/command", json={"text": "/leaves"}).json()["pending"])
 
     def test_the_card_stays_in_the_chat_of_its_leave_request(self):
@@ -484,6 +507,46 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(command(first)["pending"], card)
         self.assertIsNone(command(second)["pending"])
         self.assertIn("Dropped", client.post(f"{self.url}/api/command", json={"text": "/cancel", "conversation_id": first}).json()["output"])
+
+    def test_an_answer_keeps_its_sources_and_the_scope_limits_the_search(self):
+        import Chatbot
+        create_user("hugo", "hugo@example.com", "pw")
+        client = self.login(email="hugo@example.com")
+        sources = [{"source": "accord.md", "page": None, "score": 0.71, "semantic": 0.7, "keyword": 0.77, "excerpt": "Quatre jours."}]
+        documents = {"role": "system", "content": "[accord.md]\nQuatre jours.", "sources": sources}
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(Store, "DEFAULT_DOCS_DIR", Path(folder)), \
+                mock.patch.object(Chatbot, "rag_message", return_value=documents) as rag:
+            Path(folder, "accord.md").write_text("# Accord", encoding="utf-8")
+            scope_url = f"{self.url}/api/documents/scope"
+            self.assertEqual(client.put(scope_url, json={"sources": ["absent.md"]}).status_code, 422)
+            self.assertEqual(client.put(scope_url, json={"types": ["exe"]}).status_code, 422)
+            chosen = client.put(scope_url, json={"sources": ["accord.md"]}).json()["scope"]
+            self.assertEqual(chosen, {"sources": ["accord.md"], "types": []})
+            self.assertEqual(client.get(f"{self.url}/api/settings").json()["document_scope"], chosen)
+
+            stream = events(self.chat(client, "Mariage ?", answer=("Quatre jours [accord.md].",)))
+            self.assertEqual(rag.call_args.kwargs["scope"], chosen)
+            self.assertEqual([data for name, data in stream if name == "sources"], [{"sources": sources}])
+            conversation = stream[0][1]["id"]
+            history = client.get(f"{self.url}/api/conversations/{conversation}/messages").json()["messages"]
+            self.assertNotIn("sources", history[0])
+            self.assertEqual(history[1]["sources"], sources)
+
+            # [X2] A branch keeps the sources of the answers it copies.
+            self.chat(client, "Et un Pacs ?", conversation_id=conversation, answer=("Pareil.",))
+            FakeOllama.scripted = [["Pareil, quatre jours."]]
+            branch = events(client.post(f"{self.url}/api/chat", json={"message": "Et le Pacs ?", "conversation_id": conversation,
+                                                                       "branch_from": 2}))[0][1]["id"]
+            self.assertEqual(client.get(f"{self.url}/api/conversations/{branch}/messages").json()["messages"][1]["sources"], sources)
+
+            # Hidden with /settings sources off, but still kept with the answer.
+            client.put(f"{self.url}/api/settings/sources", json={"value": "off"})
+            stream = events(self.chat(client, "Encore ?", answer=("Oui.",)))
+            self.assertEqual([name for name, _ in stream if name == "sources"], [])
+            later = client.get(f"{self.url}/api/conversations/{stream[0][1]['id']}/messages").json()["messages"]
+            self.assertEqual(later[1]["sources"], sources)
+            client.put(f"{self.url}/api/settings/sources", json={"value": "on"})
+            self.assertIsNone(client.put(scope_url, json={}).json()["scope"])
 
     def upload(self, client, name, content):
         return client.post(f"{self.url}/api/documents", params={"name": name}, data=content)
