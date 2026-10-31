@@ -53,10 +53,10 @@ aurait créé deux comportements.
 
 Ordre choisi, volontairement :
 
-  1. entrée  — avant le cache, le RAG et le modèle. Une question hors
+  1. entrée : avant le cache, le RAG et le modèle. Une question hors
      périmètre ne doit ni coûter un appel, ni servir une vieille réponse
      du cache.
-  2. sortie  — après generate_reply, avant save_message et le cache.
+  2. sortie : après generate_reply, avant save_message et le cache.
      retract() existe déjà pour la boucle ReAct : on s'en sert pour
      remplacer ce qui a été streamé. Limite assumée : dans le terminal,
      retract n'efface pas la ligne (c'est déjà le cas pour l'agent).
@@ -72,14 +72,14 @@ Pourquoi ces règles-là, et pas un filtre « unsafe » générique
 
 Sensai n'est pas un chatbot grand public. Le risque métier, c'est le RH :
 
-  * salaire / NIR / absences d'un AUTRE salarié  — l'exemple même du
+  * salaire / NIR / absences d'un AUTRE salarié : l'exemple même du
     catalogue. « mon salaire », « salaire de base », « congés de
     maternité » restent autorisés : ce sont les règles ou la situation
     de la personne qui pose la question.
-  * jailbreak  — « ignore tes consignes », system prompt, developer mode.
+  * jailbreak : « ignore tes consignes », system prompt, developer mode.
     « ignore the previous date » n'est pas pris : sinon on casse le chat
     RH le plus banal.
-  * PII structurée  — les mêmes motifs que T3 (e-mail, téléphone, NIR,
+  * PII structurée : les mêmes motifs que T3 (e-mail, téléphone, NIR,
     IBAN, carte). On réutilise Tools/privacy.py (mask avec [kind] dans
     le chat, redact avec des blancs dans les requêtes web). On ne retire
     PAS le nom du compte : « je pose un congé » a besoin de l'identité,

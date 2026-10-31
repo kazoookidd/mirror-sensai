@@ -6,12 +6,12 @@ This module does not trust that: a small model, a jailbreak, or a cached
 answer can still leak. The same rules run in the terminal and in the web UI,
 because both go through chat_turn.
 
-  * input  — a question about another employee's salary or situation, or a
+  * input: a question about another employee's salary or situation, or a
     prompt that tries to drop the assistant's rules, is refused before the
     cache, the documents and the model. Personal numbers (e-mail, phone,
     NIR, IBAN, card) are replaced by [kind] in what the model sees and in
     what is stored.
-  * output — the same numbers are redacted in the answer (or the whole
+  * output: the same numbers are redacted in the answer (or the whole
     answer is refused, GUARDRAILS_OUTPUT=refuse). What was streamed is
     replaced. An answer that names another employee's personal data is
     never shown.
@@ -177,7 +177,7 @@ def inspect_output(text: str, action: str = DEFAULT_OUTPUT) -> Screen:
 
 
 def asks_about_another_employee(text: str) -> bool:
-    """Salary, NIR or absences of a named person or a colleague — not 'mon salaire'
+    """Salary, NIR or absences of a named person or a colleague, not 'mon salaire'
     and not the company rules ('salaire de base', 'congés de maternité')."""
     if _HOW_MUCH.search(text) or _HOW_MUCH_EN.search(text) or _POSSESSIVE_EN.search(text):
         return True
