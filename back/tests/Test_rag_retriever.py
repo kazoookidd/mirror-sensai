@@ -48,7 +48,9 @@ class RetrieveTests(unittest.TestCase):
             found = Retriever.retrieve("congé mariage ?")
         self.assertEqual([c["source"] for c in found],
                          ["loi_conge_mariage_pacs.md", "loi_teletravail.md"])
-        self.assertAlmostEqual(found[0]["score"], 0.9, places=2)
+        self.assertAlmostEqual(found[0]["semantic"], 0.9, places=2)
+        self.assertGreater(found[0]["keyword"], 0)  # "congé" and "mariage" are in the chunk
+        self.assertAlmostEqual(found[0]["score"], 0.85 * found[0]["semantic"] + 0.15 * found[0]["keyword"], places=6)
 
     def test_chunks_under_the_min_score_are_dropped(self):
         with _index(), _embedding():
@@ -68,12 +70,12 @@ class RetrieveTests(unittest.TestCase):
     def test_scores_are_cosine_even_for_unnormalized_vectors(self):
         with _index(matrix=MATRIX * 7), _embedding([3.0, 0.0]):
             found = Retriever.retrieve("question")
-        self.assertAlmostEqual(found[0]["score"], 0.9, places=2)
+        self.assertAlmostEqual(found[0]["semantic"], 0.9, places=2)
 
     def test_empty_index_does_not_call_ollama(self):
         empty = ([], np.empty((0, 0), dtype=np.float32))
         with mock.patch.object(Retriever, "load_chunks", return_value=empty), \
-             _embedding() as embed:
+             mock.patch.object(Retriever, "other_embed_models", return_value=[]), _embedding() as embed:
             self.assertEqual(Retriever.retrieve("question"), [])
         embed.assert_not_called()
 
@@ -93,6 +95,55 @@ class RetrieveTests(unittest.TestCase):
              self.assertLogs("rag.Retriever", logging.WARNING) as logs:
             self.assertEqual(Retriever.retrieve("question"), [])
         self.assertIn("/ingest", logs.output[0])
+
+    def test_keywords_rerank_chunks_that_mean_almost_the_same(self):
+        chunks = [{"source": "a.md", "page": None, "chunk_index": 0, "text": "Les congés pour événements familiaux."},
+                  {"source": "b.md", "page": None, "chunk_index": 0, "text": "Le Pacs ouvre droit à quatre jours de congé."}]
+        matrix = np.array([[0.80, 0.6], [0.78, 0.626]], dtype=np.float32)
+        with _index(chunks, matrix), _embedding([1.0, 0.0]):
+            found = Retriever.retrieve("Combien de jours pour un Pacs ?")
+        semantic = {c["source"]: c["semantic"] for c in found}
+        self.assertGreater(semantic["a.md"], semantic["b.md"])  # a.md is closer by meaning only
+        self.assertEqual([c["source"] for c in found], ["b.md", "a.md"])  # "Pacs" and "jours" move b.md first
+
+    def test_the_threshold_drops_near_misses_on_the_final_score(self):
+        with _index(), _embedding(), mock.patch.dict(os.environ, {"RAG_MIN_SCORE": "0.7"}):
+            found = Retriever.retrieve("rien en commun")
+        self.assertEqual([c["source"] for c in found], ["loi_conge_mariage_pacs.md"])  # 0.85 * 0.75 < 0.7 for the 2nd
+
+    def test_the_scope_keeps_only_the_chosen_documents_or_types(self):
+        with _index(), _embedding(), mock.patch.dict(os.environ, {"RAG_MIN_SCORE": "-1"}):
+            by_name = Retriever.retrieve("question", scope={"sources": ["loi_teletravail.md"]})
+            by_type = Retriever.retrieve("question", scope={"types": ["pdf"]})
+            nothing = Retriever.retrieve("question", scope={"sources": ["absent.md"]})
+            both = Retriever.retrieve("question", scope={"sources": ["loi_teletravail.md"], "types": ["pdf"]})
+        self.assertEqual([c["source"] for c in by_name], ["loi_teletravail.md"])
+        self.assertEqual([c["source"] for c in by_type], ["syd_accord_nao_2026.pdf"])
+        self.assertEqual(nothing, [])
+        self.assertEqual(sorted(c["source"] for c in both), ["loi_teletravail.md", "syd_accord_nao_2026.pdf"])
+
+    def test_the_message_lists_its_sources_with_their_scores(self):
+        with _index(), _embedding():
+            message = Retriever.rag_message("congé mariage ?", 2000)
+        self.assertEqual([s["source"] for s in message["sources"]], ["loi_conge_mariage_pacs.md", "loi_teletravail.md"])
+        first = message["sources"][0]
+        self.assertEqual(set(first), {"source", "page", "score", "semantic", "keyword", "excerpt"})
+        self.assertEqual(first["excerpt"], "Le salarié a droit à 4 jours de congé pour son mariage.")
+
+    def test_an_index_left_by_another_model_is_reported_not_skipped_in_silence(self):
+        from rag import Store
+        with tempfile.TemporaryDirectory() as folder:
+            db = os.path.join(folder, "t.db")
+            Store.init_rag_db(db)
+            conn = Store.get_connection(db)
+            with conn:
+                conn.execute("INSERT INTO documents (folder, source, file_hash, embed_model) VALUES ('d', 'a.md', 'h', 'nomic-embed-text')")
+            conn.close()
+            with mock.patch.dict(os.environ, {"RAG_EMBED_MODEL": "bge-m3"}), _embedding() as embed, \
+                 self.assertLogs("rag.Retriever", logging.WARNING) as logs:
+                self.assertEqual(Retriever.retrieve("question", db_path=db), [])
+        embed.assert_not_called()
+        self.assertIn("indexed with nomic-embed-text, not bge-m3: run /ingest again", logs.output[0])
 
     def test_zero_vector_is_ignored_without_warning(self):
         matrix = np.vstack([np.zeros(2, dtype=np.float32), MATRIX[0]])
@@ -179,7 +230,7 @@ class ChatTurnTests(unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             Chatbot.chat_turn(self.session, "Question ?")
         used = estimate_tokens("Tu es RH.") + estimate_tokens("Question ?")
-        rag.assert_called_once_with("Question ?", 100 - used, ollama_url="http://x")
+        rag.assert_called_once_with("Question ?", 100 - used, ollama_url="http://x", scope=None)
         self.assertEqual(len(self.sent), 2)
 
     def test_documents_switched_off_skip_the_search_and_the_cache(self):
@@ -191,6 +242,26 @@ class ChatTurnTests(unittest.TestCase):
         cache.assert_not_called()
         self.assertEqual(self.sent, [{"role": "system", "content": "Tu es RH."}, {"role": "user", "content": "Congé mariage ?"}])
         Chatbot.record_model.assert_called_once_with(1, "m")
+
+
+class ScopeCommandTests(unittest.TestCase):
+    def run_scope(self, session, text):
+        output = io.StringIO()
+        statuses = [{"source": "accord.pdf"}, {"source": "loi_teletravail.md"}]
+        with mock.patch.object(Commands, "document_statuses", return_value=statuses), contextlib.redirect_stdout(output):
+            Commands.handle_command(session, text)
+        return output.getvalue()
+
+    def test_scope_limits_the_search_to_documents_or_types_and_off_resets_it(self):
+        session = Commands.Session(user_id="u", conversation_id=1, model="m", persona_id="default", personas={},
+                                   ollama_url="x", search_motor="tavily")
+        self.assertIn("Searching in every HR document.", self.run_scope(session, "/scope"))
+        self.assertIn("Searching in loi_teletravail.md, every .pdf file.", self.run_scope(session, "/scope loi_teletravail.md pdf"))
+        self.assertEqual(session.document_scope, {"sources": ["loi_teletravail.md"], "types": ["pdf"]})
+        self.assertIn("unknown document: absent.md", self.run_scope(session, "/scope absent.md"))
+        self.assertEqual(session.document_scope, {"sources": ["loi_teletravail.md"], "types": ["pdf"]})
+        self.run_scope(session, "/scope off")
+        self.assertIsNone(session.document_scope)
 
 
 class IngestCommandTests(unittest.TestCase):

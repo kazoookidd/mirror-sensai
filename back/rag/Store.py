@@ -236,6 +236,17 @@ def _to_matrix(rows: list) -> np.ndarray:
     return np.vstack(vectors)
 
 
+def other_embed_models(db_path: str | None = None) -> list[str]:
+    """Embedding models of indexed documents that are not the current one: they need /ingest again."""
+    init_rag_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute("SELECT DISTINCT embed_model FROM documents WHERE embed_model != ?", (embed_model(),))
+        return [row["embed_model"] for row in rows]
+    finally:
+        conn.close()
+
+
 def load_chunks(db_path: str | None = None) -> tuple[list[dict], np.ndarray]:
     """Chunks embedded with the current model, and their vectors as a matrix."""
     init_rag_db(db_path)

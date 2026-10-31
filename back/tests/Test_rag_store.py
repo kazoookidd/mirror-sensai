@@ -68,11 +68,12 @@ class EmbeddingsTests(unittest.TestCase):
         self.assertEqual([c["model"] for c in self.fake.calls],
                          ["other-embed", Embeddings.DEFAULT_EMBED_MODEL])
 
-    def test_unreachable_ollama_returns_none_with_warning(self):
+    def test_unreachable_ollama_returns_none_and_leaves_the_message_to_the_caller(self):
         down = mock.Mock(side_effect=requests.exceptions.ConnectionError())
         with mock.patch.object(Embeddings.requests, "post", down), \
-             self.assertLogs("rag.Embeddings", logging.WARNING) as logs:
+             self.assertLogs("rag.Embeddings", logging.DEBUG) as logs:
             self.assertIsNone(Embeddings.embed_query("x"))
+        self.assertEqual([record.levelno for record in logs.records], [logging.DEBUG])
         self.assertIn("cannot connect to Ollama", logs.output[0])
 
     def test_wrong_number_of_vectors_returns_none(self):

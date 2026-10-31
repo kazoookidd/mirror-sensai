@@ -1,12 +1,21 @@
 import logging
 import os
+from pathlib import Path
 import numpy as np
 from Memories.Compression import estimate_tokens
-from rag.Embeddings import embed_query
-from rag.Store import EMBEDDING_DTYPE, load_chunks
+from rag.Embeddings import embed_model, embed_query
+from rag.Keywords import bm25_scores
+from rag.Store import EMBEDDING_DTYPE, load_chunks, other_embed_models
 
 DEFAULT_MIN_SCORE = 0.50
 DEFAULT_TOP_K = 3
+# [R2] The chunks closest by meaning are scored again with their keywords before the threshold.
+DEFAULT_CANDIDATES = 10
+DEFAULT_KEYWORD_WEIGHT = 0.15
+# BM25 has no upper bound: score / (score + KEYWORD_SATURATION) brings it into 0..1 on its own,
+# so a chunk keeps the same keyword score whatever the other chunks are.
+KEYWORD_SATURATION = 5.0
+EXCERPT_CHARS = 400
 # A description, not an order: "say so if they do not answer" made small models refuse
 # a leave request or a web search whenever an excerpt was found (docs/benchmarks/chat_models.md).
 CONTEXT_HEADER = (
@@ -43,23 +52,44 @@ def cosine_scores(matrix: np.ndarray, vector: list[float]) -> np.ndarray:
         return (matrix @ query) / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(query))
 
 
-def _best_chunks(chunks: list[dict], scores: np.ndarray, top_k: int,
-                 min_score: float) -> list[dict]:
-    """The `top_k` best chunks scoring at least `min_score`."""
-    best = []
-    for i in np.argsort(-scores)[:top_k]:
-        if scores[i] >= min_score:
-            best.append({**chunks[i], "score": float(scores[i])})
-    return best
+def in_scope(source: str, scope: dict | None) -> bool:
+    """[R2] Whether a document passes the metadata filter: one of the names chosen, or one of the types (pdf, md, txt)."""
+    if not scope:
+        return True
+    return source in scope.get("sources", []) or Path(source).suffix.lower().lstrip(".") in scope.get("types", [])
+
+
+def _rerank(question: str, chunks: list[dict], semantic: np.ndarray, allowed: list[int]) -> list[dict]:
+    """[R2] The candidates closest by meaning, each with its semantic, keyword and final score, best first."""
+    candidates = _read_setting("RAG_CANDIDATES", DEFAULT_CANDIDATES, int)
+    weight = min(max(_read_setting("RAG_KEYWORD_WEIGHT", DEFAULT_KEYWORD_WEIGHT, float), 0.0), 1.0)
+    best = sorted(allowed, key=lambda i: -np.nan_to_num(semantic[i], nan=-1.0))[:candidates]
+    # Word rarity is counted over the whole index, not only over the candidates.
+    keyword = bm25_scores(question, [chunk["text"] for chunk in chunks])
+    scored = []
+    for i in best:
+        keyword_score = keyword[i] / (keyword[i] + KEYWORD_SATURATION)
+        final = (1 - weight) * semantic[i] + weight * keyword_score
+        scored.append({**chunks[i], "score": float(final), "semantic": float(semantic[i]), "keyword": float(keyword_score)})
+    return sorted(scored, key=lambda chunk: -np.nan_to_num(chunk["score"], nan=-1.0))
 
 
 def retrieve(question: str, db_path: str | None = None,
-             ollama_url: str | None = None) -> list[dict]:
-    """Indexed chunks closest to `question`, best first."""
+             ollama_url: str | None = None, scope: dict | None = None) -> list[dict]:
+    """Indexed chunks relevant to `question` (in `scope`, if given), best first, each with its scores."""
     min_score = _read_setting("RAG_MIN_SCORE", DEFAULT_MIN_SCORE, float)
     top_k = _read_setting("RAG_TOP_K", DEFAULT_TOP_K, int)
     chunks, matrix = load_chunks(db_path)
-    if not chunks or top_k <= 0:
+    if not chunks:
+        # Only the chunks of the current model are loaded: an index left by another one would
+        # otherwise be skipped in silence, and the model would answer without the documents.
+        stale = other_embed_models(db_path)
+        if stale:
+            logger.warning(f"the HR documents were indexed with {', '.join(stale)}, not {embed_model()}: "
+                           "run /ingest again")
+        return []
+    allowed = [i for i, chunk in enumerate(chunks) if in_scope(chunk["source"], scope)]
+    if top_k <= 0 or not allowed:
         return []
     vector = embed_query(question, ollama_url)
     if vector is None:
@@ -67,7 +97,8 @@ def retrieve(question: str, db_path: str | None = None,
     if len(vector) != matrix.shape[1]:
         logger.warning("the index was built with another embedding model, run /ingest again")
         return []
-    return _best_chunks(chunks, cosine_scores(matrix, vector), top_k, min_score)
+    ranked = _rerank(question, chunks, cosine_scores(matrix, vector), allowed)
+    return [chunk for chunk in ranked if chunk["score"] >= min_score][:top_k]
 
 
 def format_chunk(chunk: dict) -> str:
@@ -78,23 +109,32 @@ def format_chunk(chunk: dict) -> str:
     return f"[{source}]\n{chunk['text']}"
 
 
+def source_of(chunk: dict) -> dict:
+    """[R2] What the user is shown of a chunk used for an answer: where it comes from, its scores, an excerpt."""
+    text = chunk["text"].strip()
+    excerpt = text if len(text) <= EXCERPT_CHARS else text[:EXCERPT_CHARS].rsplit(" ", 1)[0] + "..."
+    return {"source": chunk["source"], "page": chunk["page"], "score": round(chunk["score"], 3),
+            "semantic": round(chunk["semantic"], 3), "keyword": round(chunk["keyword"], 3), "excerpt": excerpt}
+
+
 def documents_message(chunks: list[dict], max_tokens: int) -> dict | None:
-    """System message with the chunks that fit in `max_tokens`, or None."""
+    """System message with the chunks that fit in `max_tokens` (and, in "sources", what they are), or None."""
     content = CONTEXT_HEADER
-    added = 0
+    added = []
     for chunk in chunks:
         candidate = f"{content}\n\n{format_chunk(chunk)}"
         if estimate_tokens(candidate) > max_tokens:
             break
         content = candidate
-        added += 1
+        added.append(chunk)
     if not added:
         return None
-    return {"role": "system", "content": content}
+    return {"role": "system", "content": content, "sources": [source_of(chunk) for chunk in added if "semantic" in chunk]}
 
 
-def rag_message(question: str, max_tokens: int, db_path: str | None = None, ollama_url: str | None = None) -> dict | None:
+def rag_message(question: str, max_tokens: int, db_path: str | None = None, ollama_url: str | None = None,
+                scope: dict | None = None) -> dict | None:
     """System message with the documents relevant to `question`, or None."""
     if max_tokens <= estimate_tokens(CONTEXT_HEADER):
         return None
-    return documents_message(retrieve(question, db_path, ollama_url), max_tokens)
+    return documents_message(retrieve(question, db_path, ollama_url, scope), max_tokens)
