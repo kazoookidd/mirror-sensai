@@ -15,6 +15,7 @@ and writes attributes on the session object it is given.
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from Agents.Guardrails import DEFAULT_OUTPUT, OUTPUT_ACTIONS
 from Memories.TokenLimit import DEFAULT_ACTION, LIMIT_ACTIONS
 from Runtime.Parameters import (
     MAX_NUM_PREDICT,
@@ -44,6 +45,15 @@ def parse_limit_action_strict(text: str) -> tuple[str | None, str | None]:
     if action in ("default", "reset"):
         return DEFAULT_ACTION, None
     return None, f"'{text}' is not a valid action (expected: {', '.join(LIMIT_ACTIONS)})."
+
+
+def parse_output_action_strict(text: str) -> tuple[str | None, str | None]:
+    action = text.strip().lower()
+    if action in OUTPUT_ACTIONS:
+        return action, None
+    if action in ("default", "reset"):
+        return DEFAULT_OUTPUT, None
+    return None, f"'{text}' is not a valid action (expected: {' or '.join(OUTPUT_ACTIONS)})."
 
 
 def parse_switch(text: str) -> tuple[bool | None, str | None]:
@@ -115,6 +125,23 @@ SETTINGS: tuple[Setting, ...] = (
         parse=parse_switch,
         describe=describe_switch,
         aliases=("hr-documents", "rag"),
+    ),
+    Setting(
+        name="guardrails",
+        attribute="guardrails",
+        summary="block out-of-scope or unsafe questions, and screen answers for personal details",
+        accepted="on or off",
+        parse=parse_switch,
+        describe=describe_switch,
+    ),
+    Setting(
+        name="guardrails-output",
+        attribute="guardrails_output",
+        summary="what to do when an answer contains personal details",
+        accepted=" or ".join(OUTPUT_ACTIONS),
+        parse=parse_output_action_strict,
+        describe=str,
+        aliases=("guardrail-output",),
     ),
     Setting(
         name="seed",
