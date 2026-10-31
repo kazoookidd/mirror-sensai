@@ -55,6 +55,13 @@ export function FailureBanner({ kind, onRetry }) {
       </ErrorBanner>
     );
   }
+  if (kind === "guardrail") {
+    return (
+      <ErrorBanner title="Sensai cannot answer this">
+        The question is outside its role, or tries to drop its rules. Rephrase: ask about the HR rules, or about your own situation.
+      </ErrorBanner>
+    );
+  }
   return (
     <ErrorBanner title="The answer could not be generated" action={<RetryButton onClick={onRetry} />}>
       Network error. Your message is kept.
