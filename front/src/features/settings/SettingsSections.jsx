@@ -11,6 +11,7 @@ import { useApp } from "../../context/AppContext.jsx";
 import { settings as settingsApi } from "../../api/settings.js";
 import { getTheme, setTheme } from "../../lib/theme.js";
 import { GenerationSettings } from "./GenerationSettings.jsx";
+import { PrivacySettings } from "./PrivacySettings.jsx";
 import { Section, Setting } from "./Section.jsx";
 import styles from "./SettingsSections.module.css";
 
@@ -53,6 +54,10 @@ export function SettingsSections() {
 
       <Section title="Generation" description="Options sent to Ollama with every request.">
         {values && <GenerationSettings values={values} onSaved={setValues} />}
+      </Section>
+
+      <Section title="Privacy" description="What Sensai refuses, and what it removes from answers.">
+        {values && <PrivacySettings values={values} onSaved={setValues} />}
       </Section>
 
       <Section title="Interface" description="Appearance and display of the answers.">

@@ -15,11 +15,12 @@ ERROR_KINDS = (
     ("cannot connect", "ollama"),
     ("not found", "model"),
     ("Token limit reached", "limit"),
+    ("Refused:", "guardrail"),
 )
 
 
 def error_kind(text: str) -> str:
-    """Which error banner the interface shows: ollama, model, limit or other."""
+    """Which error banner the interface shows: ollama, model, limit, guardrail or other."""
     for marker, kind in ERROR_KINDS:
         if marker in text:
             return kind

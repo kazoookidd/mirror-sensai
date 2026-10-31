@@ -15,6 +15,7 @@ from Memories.Conversations import (
     list_conversations,
 )
 from Memories.TokenLimit import DEFAULT_ACTION
+from Agents.Guardrails import DEFAULT_OUTPUT
 from Agents.Confirmation import PendingAction
 from Memories.Auth import ROLE_EMPLOYEE, ROLE_HR, ROLE_LABELS
 from Memories.Leaves import (STATUS_APPROVED, STATUS_LABELS, STATUS_PENDING, STATUS_REFUSED, decide_leave_request,
@@ -98,6 +99,10 @@ class Session:
     search_motor : str
     # What to do when the context is over the token limit: "block" or "continue"
     token_limit_action: str = DEFAULT_ACTION
+    # Interceptors on input and output (Agents/Guardrails.py). Off = the system prompt only.
+    guardrails: bool = True
+    # When an answer contains a personal detail: "redact" or "refuse"
+    guardrails_output: str = DEFAULT_OUTPUT
     # Show the small token usage line under each answer
     show_token_usage: bool = True
     # Sampling temperature of the chat answers; None = the model's default

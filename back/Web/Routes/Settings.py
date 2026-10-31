@@ -22,6 +22,8 @@ def settings(web: WebSession = Depends(current)):
         "ollama_url": session.ollama_url,
         "context_budget": get_budget(),
         "hr_documents": session.hr_documents,
+        "guardrails": session.guardrails,
+        "guardrails_output": session.guardrails_output,
     }
 
 

@@ -24,7 +24,7 @@ from Agents.Tooling import Tool, ToolRegistry
 from Commands import Session
 from Runtime.Env import PROJECT_ROOT, load_env, project_path
 from Runtime.Output import CliOutput
-from Tools.privacy import identifiers, redact
+from Tools.privacy import identifiers, mask, redact
 from Web.Output import SseOutput
 
 SEARCH = {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
@@ -63,6 +63,12 @@ class TestRedact(unittest.TestCase):
 
     def test_short_ids_are_not_used(self):
         self.assertEqual(identifiers("rh"), ())
+
+    def test_mask_keeps_a_placeholder_for_the_kind(self):
+        clean, found = mask("écrire à sophie.martin@acme.fr")
+        self.assertEqual(found, ["e-mail"])
+        self.assertEqual(clean, "écrire à [e-mail]")
+        self.assertEqual(mask("congé mariage durée")[1], [])
 
 
 class TestWebTools(unittest.TestCase):

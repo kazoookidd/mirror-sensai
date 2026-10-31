@@ -366,7 +366,8 @@ class TestSettings(RuntimeTestCase):
                                     show_token_usage=False, seed=42)
         handled, output = self.run_command(session, "/settings")
         self.assertTrue(handled)
-        for name in ("temperature", "token-limit", "token-usage", "seed", "num-predict"):
+        for name in ("temperature", "token-limit", "token-usage", "seed", "num-predict",
+                     "guardrails", "guardrails-output"):
             self.assertIn(name, output)
         for value in ("0.4", "continue", "off", "42", "model default"):
             self.assertIn(value, output)
@@ -390,6 +391,19 @@ class TestSettings(RuntimeTestCase):
         self.assertEqual(session.token_limit_action, "continue")
         self.run_command(session, "/settings token-limit block")
         self.assertEqual(session.token_limit_action, "block")
+
+    def test_changes_guardrails(self):
+        session = self.make_session()
+        self.assertTrue(session.guardrails)
+        self.assertEqual(session.guardrails_output, "redact")
+        self.run_command(session, "/settings guardrails off")
+        self.assertFalse(session.guardrails)
+        self.run_command(session, "/settings guardrails-output refuse")
+        self.assertEqual(session.guardrails_output, "refuse")
+        self.run_command(session, "/settings guardrails on")
+        self.run_command(session, "/settings guardrails-output redact")
+        self.assertTrue(session.guardrails)
+        self.assertEqual(session.guardrails_output, "redact")
 
     def test_changes_token_usage_display(self):
         session = self.make_session()
