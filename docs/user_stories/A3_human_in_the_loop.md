@@ -47,9 +47,9 @@ Critères d'acceptation :
 - `/cancel` abandonne l'action en attente : rien n'est enregistré
 - Une nouvelle demande dans le chat remplace l'action en attente, et le
   nouveau plan est présenté
-- Si l'outil ne peut pas préparer l'action (type de congé inconnu, dates
-  invalides), l'erreur revient au modèle, rien n'est mis en attente, et une
-  action déjà en attente reste intacte
+- Si l'outil ne peut pas préparer l'action (type de congé inconnu, date
+  manquante ou invalide), un formulaire pré-rempli est présenté à la place
+  (X4) : rien n'est enregistré tant qu'il n'est pas complété et envoyé
 - `/confirm` ou `/cancel` sans action en attente affichent un message
   explicite et ne font rien
 
