@@ -4,12 +4,13 @@ import { Brand } from "../../../components/ui/Brand/Brand.jsx";
 import { Icon } from "../../../components/ui/Icon/Icon.jsx";
 import { AgentTrace } from "./AgentTrace.jsx";
 import { ConfirmationCard } from "./ConfirmationCard.jsx";
+import { FormCard } from "./FormCard.jsx";
 import { MessageActions } from "./MessageActions.jsx";
 import { MessageSources } from "./MessageSources.jsx";
 import { StreamingIndicator } from "./StreamingIndicator.jsx";
 import styles from "./Messages.module.css";
 
-export function AssistantMessage({ model, text, steps, sources, showSources, streaming, stopped, busy, readOnly, confirmation, onRegenerate, onCommand }) {
+export function AssistantMessage({ model, text, steps, sources, showSources, streaming, stopped, busy, readOnly, confirmation, onRegenerate, onCommand, onSubmitForm, onAnswer }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const shown = showSources && !readOnly ? sources?.length ?? 0 : 0;
   return (
@@ -19,9 +20,11 @@ export function AssistantMessage({ model, text, steps, sources, showSources, str
         {model && <span className={styles.model}>{model}</span>}
       </header>
       {steps?.length > 0 && <AgentTrace steps={steps} streaming={streaming} />}
-      {confirmation
-        ? <ConfirmationCard {...confirmation} busy={busy} onConfirm={() => onCommand("/confirm")} onCancel={() => onCommand("/cancel")} />
-        : text && <Markdown text={text} />}
+      {confirmation?.form
+        ? <FormCard {...confirmation} busy={busy} onSubmit={onSubmitForm} onAnswer={onAnswer} onCancel={() => onCommand("/cancel")} />
+        : confirmation
+          ? <ConfirmationCard {...confirmation} busy={busy} onConfirm={() => onCommand("/confirm")} onCancel={() => onCommand("/cancel")} />
+          : text && <Markdown text={text} />}
       {stopped && (
         <p className={styles.stopped}>
           <Icon name="stop" size={16} display={12} />
