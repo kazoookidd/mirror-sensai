@@ -24,7 +24,7 @@ from Agents.ReAct import (LLMError, ModelReply, ReActAgent, announces_search, de
                           parse_tool_call, repeats_earlier_answer, tool_calls_in_text)
 from Agents.Confirmation import PendingAction
 from Agents.Engine import generate_reply
-from Agents.Setup import DEFAULT_TOOLS_PATH, build_registry, format_search_results, hr_tools
+from Agents.Setup import DEFAULT_TOOLS_PATH, build_registry, format_search_results, hr_tools, question_tools
 from Agents.Tooling import Tool, ToolRegistry, load_tool_specs
 from Commands import Session, handle_command
 
@@ -388,7 +388,7 @@ class TestSetup(unittest.TestCase):
         session = self.session("tavily")
         registry = build_registry(session)
         self.assertEqual(registry.names(), ["search_internet", "read_webpage", "file_leave_request",
-                                            "cancel_leave_request"])
+                                            "cancel_leave_request", "ask_user"])
         with mock.patch("Tools.web_search.search_internet", return_value=[]) as fake:
             registry.run("search_internet", {"query": "x"})
             session.search_motor = "exa"  # /switch_search
@@ -501,7 +501,8 @@ class TestHumanInTheLoop(unittest.TestCase):
         session = Session(user_id="alice", conversation_id=1, model="m", persona_id="default",
                           personas={}, ollama_url="x", search_motor="tavily")
         registry = ToolRegistry.from_json(DEFAULT_TOOLS_PATH, {
-            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session)})
+            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session),
+            **question_tools(session)})
         self.assertTrue(registry.is_critical("file_leave_request"))
         with mock.patch(SAVE) as save:
             pending, problem = registry.propose("file_leave_request", VALID_LEAVE)
@@ -512,20 +513,22 @@ class TestHumanInTheLoop(unittest.TestCase):
             self.assertFalse(ok)
             save.assert_not_called()
 
-    def test_bad_leave_fields_go_back_to_the_model_and_nothing_is_saved(self):
+    def test_bad_leave_fields_become_a_form_and_nothing_is_saved(self):
+        # [X4] An unknown type is not an error for the model any more: the user completes a form.
         session = Session(user_id="alice", conversation_id=1, model="m", persona_id="default",
                           personas={}, ollama_url="x", search_motor="tavily")
         registry = ToolRegistry.from_json(DEFAULT_TOOLS_PATH, {
-            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session)})
+            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session),
+            **question_tools(session)})
         llm = Script(tools_reply(call("file_leave_request",
-                                      {**VALID_LEAVE, "leave_type": "holiday"})),
-                     say("Which type of leave?"))
+                                      {**VALID_LEAVE, "leave_type": "holiday"})))
         with mock.patch(SAVE) as save:
             result = ReActAgent(llm, registry).run("q")
-        self.assertEqual(result.status, "final")
-        self.assertIsNone(result.pending)
+        self.assertEqual(result.status, "awaiting_confirmation")
+        form = {f["name"]: f for f in result.pending.as_dict()["fields"]}
+        self.assertEqual((form["leave_type"]["value"], form["start_date"]["value"]), ("", "2026-11-03"))
+        self.assertIn("holiday", form["leave_type"]["error"])
         save.assert_not_called()
-        self.assertIn("leave_type", llm.seen[1][-1]["content"])
 
 
 class FakeOllama(BaseHTTPRequestHandler):
@@ -552,6 +555,18 @@ class FakeOllama(BaseHTTPRequestHandler):
         pass
 
 
+def use_temporary_database(test):
+    """Point the database at a temporary file for this test: never at storage/sensai.db,
+    which is the user's real database."""
+    from Memories import Database
+    folder = tempfile.TemporaryDirectory()
+    test.addCleanup(folder.cleanup)
+    patch = mock.patch.object(Database, "DB_PATH", os.path.join(folder.name, "test.db"))
+    patch.start()
+    test.addCleanup(patch.stop)
+    Database.init_db()
+
+
 class TestEndToEnd(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -564,6 +579,7 @@ class TestEndToEnd(unittest.TestCase):
         cls.server.shutdown(); cls.server.server_close()
 
     def setUp(self):
+        use_temporary_database(self)
         FakeOllama.received, FakeOllama.status = [], 200
 
     def test_full_loop_over_streaming_http(self):
@@ -610,7 +626,8 @@ class TestEndToEnd(unittest.TestCase):
         session = Session(user_id="alice", conversation_id=1, model="llama3", persona_id="default",
                           personas={}, ollama_url=self.url, search_motor="tavily")
         session.tools = ToolRegistry.from_json(DEFAULT_TOOLS_PATH, {
-            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session)})
+            "search_internet": lambda query: "", "read_webpage": lambda url: "", **hr_tools(session),
+            **question_tools(session)})
         context = [{"role": "system", "content": "s"}, {"role": "user", "content": "je pose lundi"}]
         buf = io.StringIO()
         with mock.patch(SAVE, return_value=4) as save:

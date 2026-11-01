@@ -103,7 +103,7 @@ class TestWebTools(unittest.TestCase):
     def test_web_tools_can_be_turned_off(self):
         with mock.patch.dict(os.environ, {"AGENT_WEB_TOOLS": "false"}):
             registry = build_registry(self.session())
-        self.assertEqual(registry.names(), ["file_leave_request", "cancel_leave_request"])
+        self.assertEqual(registry.names(), ["file_leave_request", "cancel_leave_request", "ask_user"])
 
     def test_the_guidance_follows_the_tools_offered(self):
         everything = tool_guidance({"search_internet", "file_leave_request"})
