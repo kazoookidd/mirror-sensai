@@ -17,7 +17,7 @@ from Commands import handle_command
 from Web.Output import pending_confirmation
 from Web.Sessions import WebSession, current
 
-INTERACTIVE = ("/new", "/conversations", "/export")
+INTERACTIVE = ("/new", "/conversations", "/export", "/form", "/formulaire")  # /form reads the keyboard: the web shows a card
 
 router = APIRouter()
 # sys.stdout belongs to the whole process: one command captured at a time.

@@ -9,7 +9,7 @@ import styles from "./ThreadView.module.css";
 
 const STICK_DISTANCE = 160;
 
-export function ThreadView({ messages, versions, busy, offline, composer, toolbar, onRetry, onEdit, onRegenerate, onVersion, onCommand }) {
+export function ThreadView({ messages, versions, busy, offline, composer, toolbar, onRetry, onEdit, onRegenerate, onVersion, onCommand, onSubmitForm, onAnswer }) {
   const scroller = useRef(null);
   const versionAt = Object.fromEntries(versions.map((version) => [version.index, version]));
   const stick = useRef(true);
@@ -38,6 +38,7 @@ export function ThreadView({ messages, versions, busy, offline, composer, toolba
             if (message.role === "command") return <CommandResult key={message.id} {...message} />;
             return <AssistantMessage key={message.id} model={message.model} text={message.text} steps={message.steps} sources={message.sources} showSources={showSources} busy={busy || offline}
               streaming={message.streaming} stopped={message.stopped} confirmation={message.confirmation} onCommand={onCommand}
+              onSubmitForm={(values) => onSubmitForm(message, values)} onAnswer={(answer) => onAnswer(message, answer)}
               onRegenerate={message.saved ? () => onRegenerate(message) : undefined} />;
           })}
         </div>

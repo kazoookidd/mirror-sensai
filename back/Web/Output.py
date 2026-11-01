@@ -81,8 +81,12 @@ class SseOutput:
     def context(self, context_tokens: int, budget: int) -> None:
         self._emit("context", tokens=context_tokens, budget=budget)
 
-    def confirmation(self, title: str, plan: str) -> None:
-        self._emit("confirmation", title=title, plan=plan)
+    def confirmation(self, title: str, plan: str, form: dict | None = None) -> None:
+        """[A3] A plan to confirm, or [X4] a form to fill in (`form`)."""
+        if form is None:
+            self._emit("confirmation", title=title, plan=plan)
+        else:
+            self._emit("confirmation", title=title, plan=plan, form=form)
 
     def sources(self, sources: list[dict]) -> None:
         self._emit("sources", sources=sources)
@@ -94,4 +98,7 @@ def pending_confirmation(session, conversation_id: int | None) -> dict | None:
     pending = session.pending_action
     if pending is None or pending.conversation_id != conversation_id:
         return None
-    return {"title": pending.title, "plan": pending.plan}
+    card = {"title": pending.title, "plan": pending.plan}
+    if hasattr(pending, "as_dict"):  # [X4] a form to fill in, not a plan to confirm
+        card["form"] = pending.as_dict()
+    return card

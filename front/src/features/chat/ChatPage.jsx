@@ -19,7 +19,7 @@ export function ChatPage() {
   const onConversation = useCallback((conversation) => {
     navigate(`/chat/${conversation.id}`, { replace: true });
   }, [navigate]);
-  const { messages, versions, conversation, busy, attachments, attaching, send, edit, regenerate, stop, retry, load, reset, runCommand, attach } = useChat({ onConversation });
+  const { messages, versions, conversation, busy, attachments, attaching, send, edit, regenerate, stop, retry, load, reset, runCommand, attach, submitForm, answer } = useChat({ onConversation });
 
   const exportChat = (text) => {
     if (!conversation) return runCommand(text, "Error: This chat has no messages yet.");
@@ -68,7 +68,7 @@ export function ChatPage() {
       {started
       ? <ThreadView messages={messages} versions={versions} busy={busy} offline={!ollama.online} composer={input} toolbar={actions(false)} onRetry={retry}
         onEdit={edit} onRegenerate={regenerate} onVersion={(conversationId) => navigate(`/chat/${conversationId}`)}
-        onCommand={runCommand} />
+        onCommand={runCommand} onSubmitForm={submitForm} onAnswer={answer} />
       : <StartView composer={input} onSuggestion={(text) => composer.current.fill(text)} />}
     </AppShell>
   );

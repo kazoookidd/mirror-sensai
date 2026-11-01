@@ -256,6 +256,87 @@
   margin-left: auto;
 }
 
+/* [X4] Questions and forms of the assistant */
+.formQuestion {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.formOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.formFree {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.formFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.formFields > footer {
+  grid-column: 1 / -1;
+}
+
+.formLabel {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.formOptional {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+.formControl {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.formControl:focus-visible {
+  border-color: var(--color-accent-default);
+  outline: 0;
+  box-shadow: var(--ring-accent);
+}
+
+.formControl[aria-invalid="true"] {
+  border-color: var(--color-error-default);
+}
+
+.formError {
+  margin: 0;
+  color: var(--color-error-default);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+@media (max-width: 767px) {
+  .formFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .trace {
   display: flex;
   flex-direction: column;

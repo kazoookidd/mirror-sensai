@@ -77,6 +77,44 @@ def asks_for_leave(text: str) -> bool:
                 or (_CANCEL.search(text) and _REQUEST_WORD.search(text) and not _QUESTION.search(text)))
 
 
+_A_DATE = re.compile(
+    r"\b\d{1,2}(?:er)?\b(?!\s*(?:jours?|semaines?|days?|weeks?)\b)|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}\b|"
+    r"\b(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|demain|après-demain|aujourd'hui|"
+    r"semaine prochaine|mois prochain|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|"
+    r"septembre|octobre|novembre|décembre|decembre|monday|tuesday|wednesday|thursday|friday|saturday|"
+    r"sunday|tomorrow|today|next week|january|february|march|april|may|june|july|august|september|"
+    r"october|november|december)\b",
+    re.IGNORECASE,
+)
+_LEAVE_TYPE_WORDS = (
+    ("bereavement", r"d[ée]c[èe]s|deuil|enterrement|obs[èe]ques"),
+    ("marriage", r"mariage|pacs|me marie"),
+    ("sick_leave", r"maladie|malade|arr[êe]t"),
+    ("remote_work", r"t[ée]l[ée]travail"),
+    ("unpaid_leave", r"sans solde"),
+    ("paid_leave", r"cong[ée]s? pay[ée]s?|vacances|rtt"),
+)
+
+
+def mentions_a_date(text: str) -> bool:
+    """A day, a date or a month in the message ("le 3", "lundi", "novembre", "2026-11-03")."""
+    return _A_DATE.search(text) is not None
+
+
+def leave_type_in(text: str) -> str:
+    """The type of leave a message names ("congé maladie" -> sick_leave), or ""."""
+    for leave_type, words in _LEAVE_TYPE_WORDS:
+        if re.search(rf"\b(?:{words})", text, re.IGNORECASE):
+            return leave_type
+    return ""
+
+
+def wants_leave_without_dates(text: str) -> bool:
+    """[X4] "Je veux poser un congé": a leave request with no date at all. A form is the fastest
+    way to get the type and the dates; small models asked for them in text, or made dates up."""
+    return asks_for_leave(text) and not mentions_a_date(text) and not _CANCEL.search(text)
+
+
 def should_offer_tools(text: str) -> bool:
     text = text.strip()
     if not text:

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { attachments } from "../../api/attachments.js";
 import { conversations } from "../../api/conversations.js";
 import { chat, commands } from "../../api/chat.js";
+import { forms } from "../../api/forms.js";
 import { useChat } from "./useChat.js";
 
 const app = {
@@ -13,6 +14,7 @@ vi.mock("../../context/AppContext.jsx", () => ({ useApp: () => app }));
 vi.mock("../../api/chat.js", () => ({ chat: { send: vi.fn(), stop: vi.fn() }, commands: { run: vi.fn() } }));
 vi.mock("../../api/conversations.js", () => ({ conversations: { messages: vi.fn() } }));
 vi.mock("../../api/attachments.js", () => ({ attachments: { join: vi.fn() } }));
+vi.mock("../../api/forms.js", () => ({ forms: { submit: vi.fn() } }));
 
 function streams(...events) {
   chat.send.mockImplementation(async (text, id, onEvent) => events.forEach(([name, data]) => onEvent(name, data)));
@@ -74,6 +76,55 @@ describe("useChat", () => {
     const { result } = setup();
     await act(() => result.current.send("How?"));
     expect(result.current.messages[1].text).toBe("The real answer.");
+  });
+
+  it("keeps a form on the answer, files it, and shows the errors the server returns [X4]", async () => {
+    const form = { kind: "action", submit_label: "File the request", fields: [] };
+    streams(["conversation", { id: 5, title: "Leave" }], ["answer", { text: "=== Leave request to complete ===" }],
+      ["confirmation", { title: "Leave request to complete", plan: "Complete it:", form }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("je veux poser un congé"));
+    const message = result.current.messages[1];
+    expect(message.confirmation.form).toEqual(form);
+    forms.submit.mockResolvedValueOnce({ ok: false, errors: { end_date: "required" } });
+    let errors;
+    await act(async () => { errors = await result.current.submitForm(message, { end_date: "" }); });
+    expect(errors).toEqual({ end_date: "required" });
+    expect(result.current.messages[1].confirmation).toBeTruthy();
+    forms.submit.mockResolvedValueOnce({ ok: true, settled: "=== Leave request to complete ===\nLeave request #3 saved" });
+    await act(async () => { errors = await result.current.submitForm(message, { end_date: "2026-11-06" }); });
+    expect(errors).toBeNull();
+    expect(forms.submit).toHaveBeenLastCalledWith(5, { end_date: "2026-11-06" });
+    expect(result.current.messages[1]).toMatchObject({ confirmation: null, text: expect.stringContaining("#3 saved") });
+  });
+
+  it("sends the answers of a form of the model as the next message [X4]", async () => {
+    const form = { kind: "answers", submit_label: "Send", fields: [] };
+    streams(["conversation", { id: 5, title: "Address" }], ["confirmation", { title: "Adresse", plan: "Adresse", form }],
+      ["answer", { text: "=== Adresse ===" }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("Je déménage"));
+    forms.submit.mockResolvedValueOnce({ ok: true, answer: "Nouvelle adresse: 12 rue des Lilas", settled: "=== Adresse ===\nAnswers:" });
+    streams(["token", { text: "Merci, c'est noté." }], DONE);
+    await act(async () => {
+      await result.current.submitForm(result.current.messages[1], { field_1: "12 rue des Lilas" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(chat.send.mock.calls[1][0]).toBe("Nouvelle adresse: 12 rue des Lilas");
+    expect(result.current.messages[1]).toMatchObject({ confirmation: null, text: "=== Adresse ===\nAnswers:" });
+  });
+
+  it("sends the answer to a question as the next message [X4]", async () => {
+    const form = { kind: "question", submit_label: "Send", fields: [] };
+    streams(["conversation", { id: 5, title: "Leave" }], ["confirmation", { title: "Question", plan: "Quel type ?", form }],
+      ["answer", { text: "=== Question ===" }], DONE);
+    const { result } = setup();
+    await act(() => result.current.send("je veux poser un congé"));
+    streams(["token", { text: "Merci." }], DONE);
+    await act(() => result.current.answer(result.current.messages[1], "RTT"));
+    expect(chat.send.mock.calls[1][0]).toBe("RTT");
+    expect(result.current.messages[1]).toMatchObject({ confirmation: null, text: "=== Question ===\nQuel type ?\nAnswer: RTT" });
+    expect(result.current.messages[2]).toMatchObject({ role: "user", text: "RTT" });
   });
 
   it("replaces an empty answer by a failure that keeps the question", async () => {

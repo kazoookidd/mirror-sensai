@@ -3,6 +3,7 @@ import { useApp } from "../../context/AppContext.jsx";
 import { attachments as attachmentsApi } from "../../api/attachments.js";
 import { conversations } from "../../api/conversations.js";
 import { chat, commands } from "../../api/chat.js";
+import { forms as formsApi } from "../../api/forms.js";
 
 const CHARS_PER_TOKEN = 4;
 
@@ -70,7 +71,8 @@ export function useChat({ onConversation }) {
         } else if (name === "sources") {
           updateAnswer(answerId, () => ({ sources: data.sources }));
         } else if (name === "confirmation") {
-          showConfirmation(answerId, { title: data.title, plan: data.plan });
+          // [X4] `form`: a question or a form to fill in, instead of a plan to confirm.
+          showConfirmation(answerId, { title: data.title, plan: data.plan, ...(data.form && { form: data.form }) });
         } else if (name === "answer") {
           updateAnswer(answerId, () => ({ text: data.text }));
         } else if (name === "usage") {
@@ -152,6 +154,32 @@ export function useChat({ onConversation }) {
     setBusy(false);
   }, [conversation, messages, setModel, refreshPersonas]);
 
+  // [X4] A form to complete (a leave request with something missing): submitting it files the
+  // request; the server checks the values again and returns, per field, what is wrong.
+  const submitForm = useCallback(async (message, values) => {
+    setBusy(true);
+    try {
+      const result = await formsApi.submit(conversation?.id ?? null, values);
+      if (!result.ok) return result.errors;
+      updateAnswer(message.id, () => ({ confirmation: null, text: result.settled }));
+      // A form of the model (ask_form): its answers are the user's next message. Sent after the
+      // `finally` below, which would otherwise clear the busy state of that new answer.
+      if (result.answer) setTimeout(() => send(result.answer));
+      return null;
+    } catch (failure) {
+      return { _form: failure.message };
+    } finally {
+      setBusy(false);
+    }
+  }, [conversation, send]);
+
+  // [X4] A question from the assistant: the answer is the user's next message.
+  const answer = useCallback((message, text) => {
+    const { title, plan } = message.confirmation;
+    updateAnswer(message.id, () => ({ confirmation: null, text: `=== ${title} ===\n${plan}\nAnswer: ${text}` }));
+    return send(text);
+  }, [send]);
+
   const attach = useCallback(async (files) => {
     for (const file of files) {
       setAttaching({ name: file.name, error: "" });
@@ -204,6 +232,6 @@ export function useChat({ onConversation }) {
 
   return {
     messages, versions, conversation, busy, attachments, attaching,
-    send, edit, regenerate, stop, retry, load, reset, runCommand, attach,
+    send, edit, regenerate, stop, retry, load, reset, runCommand, attach, submitForm, answer,
   };
 }

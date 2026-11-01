@@ -77,8 +77,9 @@ class CliOutput:
     def context(self, context_tokens: int, budget: int) -> None:
         """Size of the context sent this turn. The terminal does not show it."""
 
-    def confirmation(self, title: str, plan: str) -> None:
-        """[A3] An action waits for /confirm or /cancel. The terminal already shows it in the answer."""
+    def confirmation(self, title: str, plan: str, form: dict | None = None) -> None:
+        """[A3] An action waits for /confirm or /cancel, or [X4] a form waits for its answers.
+        The terminal already shows it in the answer; the form is asked by the chat loop."""
 
     def sources(self, sources: list[dict]) -> None:
         """[R2] The HR document passages the answer comes from, with their final score."""

@@ -17,7 +17,7 @@ Tools are part of every normal turn; the user never has to ask for them.
 from dataclasses import replace
 from datetime import date, timedelta
 from Agents.ReAct import ReActAgent, describe_day, ollama_llm
-from Agents.Router import asks_for_search, refers_to_attachments, should_offer_tools
+from Agents.Router import asks_for_search, leave_type_in, refers_to_attachments, should_offer_tools, wants_leave_without_dates
 from Memories import Compression
 from rag.Attachments import has_attachments
 
@@ -67,6 +67,20 @@ def tools_available(session, user_input: str) -> bool:
     )
 
 
+def leave_form_reply(session, user_input: str):
+    """[X4] A leave request with no date: the form, prefilled with the type the message names,
+    without calling the model. The user completes it; submitting it files the request."""
+    from Agents.Leave import leave_form
+    from Chatbot import Reply  # lazy: Chatbot imports this module
+    form = leave_form(session, leave_type=leave_type_in(user_input))
+    form.conversation_id = session.conversation_id
+    session.pending_action = form
+    session.out.confirmation(form.title, form.plan, form.as_dict())
+    text = form.render()
+    session.out.answer(text)
+    return Reply(text, used_tools=True)  # used_tools: the semantic cache never keeps it
+
+
 def generate_reply(session, context: list[dict], user_input: str):
     """context: the system prompt + history + the current user message.
     Streams the answer to session.out. Returns a Reply, or None if the call
@@ -80,6 +94,9 @@ def generate_reply(session, context: list[dict], user_input: str):
 
     if not tools_available(session, user_input):
         return plain()
+
+    if "file_leave_request" in session.tools.names() and wants_leave_without_dates(user_input):
+        return leave_form_reply(session, user_input)
 
     last_text = {"value": ""}
     base_llm = ollama_llm(session.ollama_url, session.model, echo=True, prefix=PREFIX,
@@ -124,7 +141,9 @@ def generate_reply(session, context: list[dict], user_input: str):
         # [A3] The agent is suspended: the action waits for /confirm or /cancel.
         result.pending.conversation_id = session.conversation_id
         session.pending_action = result.pending
-        session.out.confirmation(result.pending.title, result.pending.plan)
+        # [X4] A form (a question, an incomplete leave request) is shown as a card to fill in.
+        form = result.pending.as_dict() if hasattr(result.pending, "as_dict") else None
+        session.out.confirmation(result.pending.title, result.pending.plan, form)
 
     if result.answer.strip() != last_text["value"].strip():
         session.out.answer(result.answer)  # answer produced by a fallback, not streamed
