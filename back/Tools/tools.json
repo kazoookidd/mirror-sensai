@@ -45,7 +45,7 @@
             "name": "file_leave_request",
             "label": "Preparing a leave request",
             "critical": true,
-            "description": "Prepare a leave request (paid leave, sick leave, remote work, ...) for the user. Use it ONLY when the user clearly asks to take, book or file leave. Fill leave_type, start_date and end_date yourself from what the user said. This tool does NOT file anything: the plan is shown to the user, who must confirm before the request is saved. After calling it, stop: do not claim the request is filed.",
+            "description": "Prepare a leave request (paid leave, sick leave, remote work, ...) for the user. Use it ONLY when the user clearly asks to take, book or file leave. Fill leave_type, start_date and end_date yourself from what the user said; if one is missing, call it anyway with what you know: the user completes a form. This tool does NOT file anything: the plan is shown to the user, who must confirm before the request is saved. After calling it, stop: do not claim the request is filed.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -75,11 +75,7 @@
                         "description": "Short reason in the user's language. Empty string if none."
                     }
                 },
-                "required": [
-                    "leave_type",
-                    "start_date",
-                    "end_date"
-                ]
+                "required": []
             }
         }
     },
@@ -100,6 +96,91 @@
                 },
                 "required": [
                     "start_date"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_user",
+            "label": "Asking you",
+            "critical": true,
+            "description": "Ask the user ONE short question when you cannot go on without their answer (which kind of leave, which day, which document). Give 2 to 6 short options when the answer is a choice. The user answers in a form, and the answer comes back as their next message. Do not use it for what you can answer yourself.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question, short, in the user's language."
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "2 to 6 short possible answers, when the answer is a choice. Empty for a free answer."
+                    }
+                },
+                "required": [
+                    "question"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_form",
+            "label": "Opening a form",
+            "critical": true,
+            "description": "Ask the user SEVERAL precise answers at once, in a small form you describe: a short title and 2 to 5 fields. Use it only when you need those answers to go on (for example to prepare a request to HR). The answers come back as the user's next message. Never use it to answer a question, never for a leave request (file_leave_request has its own form).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Short title of the form, in the user's language."
+                    },
+                    "fields": {
+                        "type": "array",
+                        "description": "2 to 5 fields.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {
+                                    "type": "string",
+                                    "description": "What to fill in, short."
+                                },
+                                "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                        "text",
+                                        "date",
+                                        "choice"
+                                    ]
+                                },
+                                "options": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "description": "2 to 6 options, for a choice only."
+                                },
+                                "required": {
+                                    "type": "boolean"
+                                }
+                            },
+                            "required": [
+                                "label",
+                                "kind"
+                            ]
+                        }
+                    }
+                },
+                "required": [
+                    "title",
+                    "fields"
                 ]
             }
         }

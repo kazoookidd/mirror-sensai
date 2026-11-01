@@ -18,6 +18,7 @@ from Memories.Memory import replace_message
 from Memories.TokenLimit import DEFAULT_ACTION
 from Agents.Guardrails import DEFAULT_OUTPUT
 from Agents.Confirmation import PendingAction
+from Agents.Forms import FormError, PendingForm
 from Memories.Auth import ROLE_EMPLOYEE, ROLE_HR, ROLE_LABELS
 from Memories.Leaves import (STATUS_APPROVED, STATUS_LABELS, STATUS_PENDING, STATUS_REFUSED, decide_leave_request,
                              list_all_leave_requests, list_leave_requests)
@@ -70,6 +71,7 @@ HELP_TEXT = """Available commands:
   /confirm                      go ahead with the action waiting for your approval
                                 (prepared by the assistant in the chat)
   /cancel                       drop it without doing anything
+  /form                         fill in the form the assistant is waiting for (field by field)
   /leaves                       list the leave requests you have filed
   /leaves all                   HR accounts: list the leave requests of every employee
   /leaves approve|refuse <n>    HR accounts: decide on request #n (pending <n> undoes it)
@@ -299,6 +301,10 @@ def confirm_pending_action(session: Session) -> None:
         print("No action is waiting for confirmation. "
               "Ask Sensai in the chat, then type /confirm.")
         return
+    if isinstance(pending, PendingForm):
+        print("A form is waiting, not a plan to confirm: fill it in (the card in the web interface, "
+              "/form in the terminal), or /cancel to drop it.")
+        return
 
     try:
         result = pending.execute()
@@ -322,6 +328,77 @@ def cancel_pending_action(session: Session) -> None:
     session.pending_action = None
     settle_pending_action(pending, "Cancelled: nothing was done.")
     print(f"Dropped: {pending.title}. Nothing was done.")
+
+
+# ---------------------------------------------------------------------
+# [X4] Questions and forms
+# ---------------------------------------------------------------------
+
+def answer_question(session: Session, text: str) -> tuple[str, bool]:
+    """A message that answers the question waiting in this chat: (the answer, True), the
+    question settled with it; "2" picks the second choice. A form of the model (ask_form) answered
+    in words instead of filled in takes the message as it is. Any other message: (text, False)."""
+    pending = session.pending_action
+    if not (isinstance(pending, PendingForm) and pending.is_question
+            and pending.conversation_id == session.conversation_id):
+        return text, False
+    if pending.kind == "answers":
+        answer = " ".join(text.split())
+    else:
+        try:
+            answer = pending.submit({pending.fields[0].name: text})
+        except FormError:
+            return text, False
+    session.pending_action = None
+    settle_pending_action(pending, f"Answer: {answer}")
+    return answer, True
+
+
+def fill_form_in_terminal(session: Session) -> str | None:
+    """[X4] The terminal's form: field by field, Enter keeps the prefilled value, /cancel drops it.
+    Only the CLI calls it (it reads the keyboard); the web interface shows a card instead.
+    A form of the model (ask_form): returns its answers, which the chat loop sends as the next message."""
+    pending = session.pending_action
+    if not isinstance(pending, PendingForm) or pending.kind == "question":
+        print("No form is waiting.")
+        return None
+    values = {item.name: item.value for item in pending.fields}
+    to_ask = list(pending.fields)
+    print(f"{pending.plan} (Enter keeps the value in brackets, /cancel drops it)")
+    while True:
+        for item in to_ask:
+            if item.options:
+                print("    " + "   ".join(f"{i}. {label}" for i, (_, label) in enumerate(item.options, start=1)))
+            current = item.option_label(values[item.name]) if values[item.name] else ""
+            hint = f" [{current}]" if current else (" (optional)" if not item.required else "")
+            try:
+                typed = input(f"  {item.label}{hint}: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nThe form is still waiting: /form to fill it in, /cancel to drop it.")
+                return None
+            if typed.lower() == "/cancel":
+                cancel_pending_action(session)
+                return None
+            if typed and item.options and typed.isdigit() and 1 <= int(typed) <= len(item.options):
+                typed = item.options[int(typed) - 1][0]
+            if typed:
+                values[item.name] = typed
+        try:
+            result = pending.submit(values)
+        except FormError as e:
+            print("  To correct: " + "; ".join(f"{name}: {message}" for name, message in e.errors.items()))
+            to_ask = [item for item in pending.fields if item.name in e.errors]
+            continue
+        except Exception as e:  # still waiting: the user can try again with /form
+            print(f"Error: the request failed ({e}). The form is still waiting: /form to try again.")
+            return None
+        session.pending_action = None
+        if pending.kind == "answers":
+            settle_pending_action(pending, f"Answers:\n{result}")
+            return result
+        settle_pending_action(pending, result)
+        print(result)
+        return None
 
 
 HR_COMMANDS = {"approve": STATUS_APPROVED, "refuse": STATUS_REFUSED, "pending": STATUS_PENDING}
@@ -601,6 +678,8 @@ def handle_command(session: Session, text: str) -> bool:
         change_setting(session, argument)
     elif command in ("/confirm", "/confirmer"):
         confirm_pending_action(session)
+    elif command in ("/form", "/formulaire"):
+        fill_form_in_terminal(session)
     elif command in ("/cancel", "/annuler"):
         cancel_pending_action(session)
     elif command in ("/leaves", "/conges"):

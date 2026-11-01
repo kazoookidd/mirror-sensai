@@ -36,10 +36,11 @@ from Runtime.Parameters import (
     parse_seed,
     parse_temperature,
 )
-from Commands import Session, handle_command, select_conversation
+from Commands import Session, answer_question, fill_form_in_terminal, handle_command, select_conversation
 from rag.Attachments import SHARE_OF_ROOM, attachments_message, has_attachments
 from rag.Retriever import rag_message
 from Agents.Engine import generate_reply
+from Agents.Forms import PendingForm
 from Agents.Guardrails import enabled as guardrails_on, inspect_input, inspect_output, parse_output_action
 from Agents.ReAct import tool_calls_in_text
 from Agents.Router import asks_for_leave
@@ -279,6 +280,8 @@ def chat_turn(session: Session, user_input: str) -> bool:
     # [M1] The profile is read again at every turn: /profile or the web page may have
     # changed it. It is part of the system prompt, so also of the cache fingerprint.
     refresh_profile(session)
+    # [X4] A message that answers the question the assistant asked ("2" picks the second choice).
+    user_input, answered = answer_question(session, user_input)
     if guardrails_on(session):
         screened = inspect_input(user_input)
         if screened.blocked:
@@ -288,7 +291,8 @@ def chat_turn(session: Session, user_input: str) -> bool:
             session.out.note(screened.note)
         user_input = screened.text
     # Without the HR documents, a cached answer written from them would not be the answer asked for.
-    skip_cache = has_attachments(session.conversation_id) or not session.hr_documents or session.document_scope
+    skip_cache = (has_attachments(session.conversation_id) or not session.hr_documents or session.document_scope
+                  or answered)  # an answer only means something after its question
     cache_turn = CacheTurn() if skip_cache else check_cache(session, user_input)
     if cache_turn.hit is not None:
         session.out.answer(cache_turn.hit.answer)
@@ -532,11 +536,25 @@ def main():
             print("Goodbye.")
             break
 
+        if stripped.lower() in ("/form", "/formulaire"):
+            # [X4] Read here, not in handle_command: the answers of a form of the model are a message.
+            answers = fill_form_in_terminal(session)
+            if answers:
+                with session.out.interruptible():
+                    chat_turn(session, answers)
+            continue
+
         if handle_command(session, stripped):
             continue
 
         with session.out.interruptible():
             chat_turn(session, user_input)
+        # [X4] The assistant prepared a form (an incomplete leave request, a form of the model): fill it in now.
+        if isinstance(session.pending_action, PendingForm) and session.pending_action.kind != "question":
+            answers = fill_form_in_terminal(session)
+            if answers:
+                with session.out.interruptible():
+                    chat_turn(session, answers)
 
 
 if __name__ == "__main__":

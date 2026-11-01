@@ -82,8 +82,9 @@ def hr_tools(session) -> dict[str, Callable]:
     The user is always the session's: the model never chooses whose request it touches."""
     from Agents.Leave import prepare_cancellation, prepare_leave_request
 
-    def file_leave_request(leave_type: str, start_date: str, end_date: str,
+    def file_leave_request(leave_type: str = "", start_date: str = "", end_date: str = "",
                            reason: str = "") -> object:
+        # Something missing or wrong: a form the user completes [X4], not an error for the model.
         return prepare_leave_request(session, leave_type, start_date, end_date, reason)
 
     def cancel_leave_request(start_date: str) -> object:
@@ -92,11 +93,27 @@ def hr_tools(session) -> dict[str, Callable]:
     return {"file_leave_request": file_leave_request, "cancel_leave_request": cancel_leave_request}
 
 
+@register_provider
+def question_tools(session) -> dict[str, Callable]:
+    """[X4] ask_user: the model asks one question; ask_form: the model writes a small form
+    (off unless AGENT_ASK_FORM=true). Both only collect answers: they never act."""
+    from Agents.Forms import model_form, question_form
+
+    def ask_user(question: str, options: list | None = None) -> object:
+        return question_form(question, options)
+
+    def ask_form(title: str, fields: list) -> object:
+        return model_form(title, fields)
+
+    return {"ask_user": ask_user, "ask_form": ask_form}
+
+
 def build_registry(session, tools_path: str = DEFAULT_TOOLS_PATH) -> ToolRegistry:
     """Bind every tool declared in tools.json to the function a provider offers.
     A declared tool nobody provides fails with a clear message at startup;
     a provided function that tools.json does not declare is simply not offered.
-    AGENT_WEB_TOOLS=false removes the web tools: nothing at all leaves the machine."""
+    AGENT_WEB_TOOLS=false removes the web tools: nothing at all leaves the machine.
+    ask_form is only offered with AGENT_ASK_FORM=true."""
     functions: dict[str, Callable] = {}
     for provider in PROVIDERS:
         functions.update(provider(session))
@@ -104,4 +121,7 @@ def build_registry(session, tools_path: str = DEFAULT_TOOLS_PATH) -> ToolRegistr
     if not parse_bool(os.getenv("AGENT_WEB_TOOLS"), True):
         for name in WEB_TOOLS:
             registry.tools.pop(name, None)
+    # [X4] Forms written by the model: off by default (docs/benchmarks/forms.md).
+    if not parse_bool(os.getenv("AGENT_ASK_FORM"), False):
+        registry.tools.pop("ask_form", None)
     return registry
