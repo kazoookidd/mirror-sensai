@@ -37,6 +37,18 @@ def _embedding(vector=QUESTION_VECTOR):
     return mock.patch.object(Retriever, "embed_query", return_value=vector)
 
 
+def use_temporary_database(test):
+    """Point the database at a temporary file for this test: never at storage/sensai.db,
+    which is the user's real database."""
+    from Memories import Database
+    folder = tempfile.TemporaryDirectory()
+    test.addCleanup(folder.cleanup)
+    patch = mock.patch.object(Database, "DB_PATH", os.path.join(folder.name, "test.db"))
+    patch.start()
+    test.addCleanup(patch.stop)
+    Database.init_db()
+
+
 class RetrieveTests(unittest.TestCase):
     def setUp(self):
         env = mock.patch.dict(os.environ, {"RAG_MIN_SCORE": "", "RAG_TOP_K": ""})
@@ -189,6 +201,7 @@ class DocumentsMessageTests(unittest.TestCase):
 
 class ChatTurnTests(unittest.TestCase):
     def setUp(self):
+        use_temporary_database(self)
         self.session = Commands.Session(
             user_id="u", conversation_id=1, model="m", persona_id="p",
             personas={"p": {"system_prompt": "Tu es RH."}},
@@ -265,6 +278,9 @@ class ScopeCommandTests(unittest.TestCase):
 
 
 class IngestCommandTests(unittest.TestCase):
+    def setUp(self):
+        use_temporary_database(self)
+
     def _run(self, text, stats, role=Commands.ROLE_HR):
         session = Commands.Session(user_id="u", conversation_id=1, model="m", persona_id="default", personas={},
                                    ollama_url="x", search_motor="tavily", account_role=role)
