@@ -52,9 +52,11 @@ _STRICT_PRIVATE = (
 )
 _LEAVE_PRIVATE = r"cong[ée]s?|rtt|absences?|arr[êe]t maladie"
 
+# "Un salarié" / "une personne" alone is how the HR documents and the user state a rule ("un salarié
+# peut bénéficier de 4 jours de congé"): not a colleague. "Un autre salarié" or "une autre personne" is.
 _COLLEAGUE = re.compile(
     r"\b(?:coll[eè]gues?|coworkers?|co-workers?|"
-    r"(?:un|une|d['']autres?|des autres|les autres|another|other)\s+"
+    r"(?:un autre|une autre|d['']autres?|des autres|les autres|another|other)\s+"
     r"(?:salari[ée]s?|employ[ée]s?|coll[eè]gues?|personnes?|employees?)|"
     r"tout le monde|everyone)\b",
     re.IGNORECASE,
